@@ -36,6 +36,7 @@ export function useTokenData(tokenAddress: `0x${string}`, userAddress?: `0x${str
     ],
     query: {
       enabled: Boolean(userAddress && tokenAddress),
+      refetchInterval: 5000,
     }
   })
 

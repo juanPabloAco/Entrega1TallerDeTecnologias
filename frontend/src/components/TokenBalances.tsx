@@ -17,13 +17,13 @@ function TokenItem({ tokenAddress }: { tokenAddress: `0x${string}` }) {
 
   return (
     <div style={{
-      border: '1px solid #444',
+      border: '1px solid var(--accent-border)',
       padding: '16px',
       borderRadius: '8px',
-      backgroundColor: '#222',
+      backgroundColor: 'var(--accent-bg)',
       marginBottom: '10px'
     }}>
-      <h3 style={{ marginTop: 0 }}>{name} ({symbol})</h3>
+      <h3 style={{ marginTop: 0, color: 'var(--text-h)' }}>{name} ({symbol})</h3>
       <p style={{ margin: '8px 0', fontSize: '1.2em' }}>
         <strong>{formattedBalance}</strong> {symbol}
       </p>
@@ -34,14 +34,14 @@ function TokenItem({ tokenAddress }: { tokenAddress: `0x${string}` }) {
 export function TokenBalances() {
   return (
     <div style={{
-      border: '1px solid #333',
+      border: '1px solid var(--border)',
       borderRadius: '8px',
       padding: '24px',
-      backgroundColor: '#1a1a1a',
-      color: '#fff'
+      backgroundColor: 'var(--code-bg)',
+      color: 'var(--text)'
     }}>
-      <h2>Saldos de Tokens (ERC-20) en Sepolia</h2>
-      <hr style={{ borderColor: '#333', marginBottom: '20px' }} />
+      <h2 style={{ margin: 0, color: 'var(--text-h)' }}>Saldos de Tokens (ERC-20) en Sepolia</h2>
+      <hr style={{ borderColor: 'var(--border)', margin: '20px 0' }} />
       {TOKENS.map((token) => (
          <TokenItem key={token.address} tokenAddress={token.address} />
       ))}
