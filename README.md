@@ -13,17 +13,22 @@ Esta es una aplicación React de página única construida con Vite, TypeScript,
    cd frontend
    ```
 
-2. Instala las dependencias del proyecto:
+2. Usar la versión recomendada de Node (Opcional, si usas nvm)
+   ```bash
+   nvm use lts 
+   ```
+
+3.Instala las dependencias del proyecto:
    ```bash
    npm install
    ```
 
-3. Inicia el servidor de desarrollo local:
+4. Inicia el servidor de desarrollo local:
    ```bash
    npm run dev
    ```
 
-4. Abre en tu navegador.
+5. Abre en tu navegador.
 
 ## Tokens de Prueba y Red
 
