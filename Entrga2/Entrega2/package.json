@@ -1,0 +1,30 @@
+{
+  "name": "multisig-dapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multisig contract + React frontend (Hardhat + Vite + RainbowKit + Wagmi v2)",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "sync:abi": "hardhat run scripts/copy-abi.ts",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "deploy:localhost": "hardhat run scripts/deploy.ts --network localhost",
+    "clean": "hardhat clean"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/chai": "^4.3.16",
+    "@types/chai-as-promised": "^7.1.8",
+    "@types/mocha": "^10.0.7",
+    "@types/node": "^20.14.10",
+    "chai": "^4.4.1",
+    "chai-as-promised": "^7.1.2",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.1",
+    "hardhat": "^2.22.6",
+    "ts-node": "^10.9.2",
+    "typechain": "^8.3.2",
+    "typescript": "^5.5.3"
+  }
+}
