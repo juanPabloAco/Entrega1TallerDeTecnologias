@@ -137,7 +137,15 @@ export function CreateJobForm() {
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs uppercase tracking-wide text-slate-500">Evaluador (obligatorio)</label>
+          <label className="mb-1 flex items-center justify-between text-xs uppercase tracking-wide text-slate-500">
+            <span>Evaluador (obligatorio)</span>
+            {MULTISIG_ADDRESS !== "0x0000000000000000000000000000000000000000" &&
+              evaluator.toLowerCase() === MULTISIG_ADDRESS.toLowerCase() && (
+                <span className="rounded bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-indigo-300 ring-1 ring-indigo-500/40">
+                  Multisig desplegada
+                </span>
+              )}
+          </label>
           <input
             value={evaluator}
             onChange={(e) => setEvaluator(e.target.value)}
@@ -145,17 +153,23 @@ export function CreateJobForm() {
             className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-xs font-mono text-slate-100"
           />
           <p className="mt-1 text-[11px] text-slate-500">
-            Sugerencia: la Multisig desplegada actúa como evaluador M-de-N.
+            La Multisig desplegada actúa como evaluador M-de-N. Pegá otra address si querés un evaluador EOA.
           </p>
         </div>
         <div>
-          <label className="mb-1 block text-xs uppercase tracking-wide text-slate-500">Proveedor (opcional)</label>
+          <label className="mb-1 block text-xs uppercase tracking-wide text-slate-500">
+            Proveedor (opcional)
+          </label>
           <input
             value={provider}
             onChange={(e) => setProvider(e.target.value)}
             placeholder="0xProvider… (puede asignarse después)"
             className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-xs font-mono text-slate-100"
           />
+          <p className="mt-1 text-[11px] text-amber-300/80">
+            ⚠ Si lo dejás vacío, el job queda en estado <strong>Open</strong> y nadie puede entregar
+            hasta que vos (cliente) asignes proveedor con <code>setProvider</code>.
+          </p>
         </div>
 
         <button

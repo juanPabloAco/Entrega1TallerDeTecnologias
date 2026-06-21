@@ -124,10 +124,27 @@ function useSnapshotAction(
 }
 
 export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId: number; onAfterChange: () => void }) {
+  // Defensive: if any required field is missing, render a loading state instead
+  // of crashing the page (which is what makes the "Detalle" panel go blank).
+  const jobReady =
+    !!job &&
+    job.budget !== undefined &&
+    !!job.client &&
+    !!job.evaluator &&
+    job.status !== undefined;
+
   const { address } = useAccount();
   const role = useJobRole(job, address);
-  const status = STATUS_LABEL[job.status];
+  const status = STATUS_LABEL[job.status] ?? "Unknown";
   const providerIsZero = !job.provider || job.provider.toLowerCase() === ZERO_ADDR;
+
+  if (!jobReady) {
+    return (
+      <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-4 text-xs text-slate-400">
+        Cargando datos del trabajo #{jobId}…
+      </div>
+    );
+  }
 
   const [providerInput, setProviderInput] = useState("");
   const [deliverableInput, setDeliverableInput] = useState("");

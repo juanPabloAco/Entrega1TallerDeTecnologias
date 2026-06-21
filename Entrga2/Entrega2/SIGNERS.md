@@ -1,8 +1,8 @@
 # Deployment Info (sepolia)
 
 - Multisig:        `0x1e912Efb93b100931b094373D252b8Ef4379d37D`
-- JobMarketplace:  `0x2bB70f2D379db0c3195d5F2515B7EBd8D62E59dF`
-- Token (MockERC20): `0x84e4d6D90E14A457a15b5c5cD63844c20a0B6C73`
+- JobMarketplace:  `0x4598f9b1F6A3E7826E015CD0B8FCE075e2CFe58b`
+- Token (MockERC20): `0x58e2f930d0cD5C8A69cdd54b78A21677Ba335f0D`
 - Threshold:       2 of 3
 
 > These are TEST wallets. Never reuse them for real funds.

@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  useReadContracts,
+  useReadContract,
   useWatchContractEvent,
-  useBlockNumber,
+  usePublicClient,
 } from "wagmi";
 import {
   MARKETPLACE_ADDRESS,
@@ -50,47 +50,149 @@ export const STATUS_BADGE: Record<number, string> = {
   6: "bg-slate-500/20 text-slate-300 ring-1 ring-slate-500/40",
 };
 
-export function useJobCount(): number {
-  const { data } = useReadContracts({
-    contracts: [
-      {
-        address: MARKETPLACE_ADDRESS,
-        abi: jobMarketplaceAbi,
-        functionName: "nextJobId",
-      },
-    ],
-    query: {
-      enabled: MARKETPLACE_ADDRESS !== "0x0000000000000000000000000000000000000000",
-    },
-  });
-  const v = data?.[0]?.result as bigint | undefined;
-  return Number(v ?? 0n);
+const MAX_JOBS = 64;
+
+function parseJobResult(result: unknown): JobTuple | undefined {
+  if (!result) return undefined;
+  const arr = result as unknown as readonly unknown[];
+  if (!Array.isArray(arr) || arr.length < 8) return undefined;
+  try {
+    const status = Number(arr[6] as number);
+    if (status === 0) return undefined;
+    return {
+      client: arr[0] as `0x${string}`,
+      provider: arr[1] as `0x${string}`,
+      evaluator: arr[2] as `0x${string}`,
+      budget: BigInt(arr[3] as bigint),
+      description: String(arr[4] ?? ""),
+      deliverableRef: (arr[5] as `0x${string}`) ?? ("0x" + "0".repeat(64)),
+      status,
+      expiresAt: BigInt(arr[7] as bigint),
+    };
+  } catch (e) {
+    console.warn("[parseJobResult] failed:", e, "raw:", result);
+    return undefined;
+  }
 }
 
-export function useJobs() {
-  const count = useJobCount();
-  const ids = Array.from({ length: count }, (_, i) => BigInt(i));
+function useJobCount(): {
+  count: number;
+  refetch: () => void;
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  error: unknown;
+} {
+  const enabled = MARKETPLACE_ADDRESS !== "0x0000000000000000000000000000000000000000";
+  const q = useReadContract({
+    address: MARKETPLACE_ADDRESS,
+    abi: jobMarketplaceAbi,
+    functionName: "nextJobId",
+    query: {
+      enabled,
+      refetchInterval: 30_000,
+    },
+  });
+  const count = useMemo(() => {
+    if (!q.data) return 0;
+    const v = q.data as unknown as bigint;
+    return Math.min(Number(v), MAX_JOBS);
+  }, [q.data]);
 
-  const query = useReadContracts({
-    allowFailure: true,
-    contracts: ids.map(
-      (id) =>
-        ({
+  useEffect(() => {
+    if (q.error) console.warn("[useJobCount] error:", q.error);
+  }, [q.error]);
+
+  return {
+    count,
+    refetch: q.refetch,
+    isLoading: q.isLoading,
+    isFetching: q.isFetching,
+    isError: q.isError,
+    error: q.error,
+  };
+}
+
+/**
+ * Read a single job via viem's publicClient directly, bypassing wagmi's
+ * multicall/contract-coders path entirely. This is the most reliable path
+ * when wagmi's batched decoding misbehaves on certain RPC providers.
+ */
+function useJobById(jobId: number, enabled: boolean): {
+  job: JobTuple | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  refetch: () => void;
+} {
+  const publicClient = usePublicClient();
+  const [data, setData] = useState<JobTuple | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<unknown>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) {
+      setData(undefined);
+      setIsLoading(false);
+      return;
+    }
+    if (!publicClient) {
+      setIsLoading(true);
+      return;
+    }
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const result = await publicClient.readContract({
           address: MARKETPLACE_ADDRESS,
           abi: jobMarketplaceAbi,
           functionName: "getJob",
-          args: [id] as const,
-        }) as const,
-    ),
-    query: {
-      enabled:
-        count > 0 && MARKETPLACE_ADDRESS !== "0x0000000000000000000000000000000000000000",
-    },
-  });
+          args: [BigInt(jobId)],
+        });
+        if (cancelled) return;
+        const parsed = parseJobResult(result);
+        setData(parsed);
+        setIsLoading(false);
+      } catch (e) {
+        if (cancelled) return;
+        console.warn(`[useJobById ${jobId}] error:`, e);
+        setError(e);
+        setIsLoading(false);
+      }
+    })();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [publicClient, jobId, enabled, tick]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, [enabled]);
+
+  return {
+    job: data,
+    isLoading,
+    isError: !!error,
+    error,
+    refetch: () => setTick((t) => t + 1),
+  };
+}
+
+export function useJobs() {
   const queryClient = useQueryClient();
+  const countQuery = useJobCount();
+  const count = countQuery.count;
 
-  const invalidate = () => queryClient.invalidateQueries();
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["marketplace"] });
+  };
 
   useWatchContractEvent({
     address: MARKETPLACE_ADDRESS,
@@ -135,34 +237,17 @@ export function useJobs() {
     onLogs: invalidate,
   });
 
-  const { data: blockNumber } = useBlockNumber({ watch: true });
-  useEffect(() => {
-    query.refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blockNumber]);
-
-  const jobs: (JobTuple | undefined)[] = (query.data ?? []).map((r) => {
-    if (r.status !== "success" || !r.result) return undefined;
-    const arr = r.result as unknown as readonly unknown[];
-    const client = arr[0] as string;
-    const provider = arr[1] as string;
-    const evaluator = arr[2] as string;
-    const budget = arr[3] as bigint;
-    const description = arr[4] as string;
-    const deliverableRef = arr[5] as `0x${string}`;
-    const status = arr[6] as number;
-    const expiresAt = arr[7] as bigint;
-    return {
-      client: client as `0x${string}`,
-      provider: provider as `0x${string}`,
-      evaluator: evaluator as `0x${string}`,
-      budget,
-      description,
-      deliverableRef,
-      status: Number(status),
-      expiresAt,
-    };
-  });
-
-  return { jobs, count, isLoading: query.isLoading, refetch: query.refetch };
+  return {
+    count,
+    isLoading: countQuery.isLoading,
+    isFetching: countQuery.isFetching,
+    isError: countQuery.isError,
+    error: countQuery.error,
+    refetch: () => {
+      countQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["marketplace", "job"] });
+    },
+  };
 }
+
+export { useJobById };

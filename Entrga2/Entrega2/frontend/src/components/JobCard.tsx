@@ -1,28 +1,68 @@
 import { useMemo, useState } from "react";
-import { JobTuple, STATUS_BADGE, STATUS_LABEL } from "@/hooks/useJobs";
+import { STATUS_BADGE, STATUS_LABEL, useJobById } from "@/hooks/useJobs";
 import { shortenAddress, TOKEN_DECIMALS } from "@/contracts";
 import { JobActions } from "./JobActions";
 
-type Props = { jobId: number; job: JobTuple | undefined };
+type Props = { jobId: number };
 
-export function JobCard({ jobId, job }: Props) {
+function fmtBudget(budget: bigint | undefined): string {
+  if (budget === undefined) return "—";
+  try {
+    return (Number(budget) / 10 ** TOKEN_DECIMALS).toFixed(2);
+  } catch {
+    return "—";
+  }
+}
+
+function fmtAddress(a: string | undefined): string {
+  if (!a) return "—";
+  if (a === "0x0000000000000000000000000000000000000000") return "—";
+  return shortenAddress(a);
+}
+
+function fmtExpires(expiresAt: bigint | undefined): string {
+  if (expiresAt === undefined) return "—";
+  try {
+    return new Date(Number(expiresAt) * 1000).toLocaleString();
+  } catch {
+    return "—";
+  }
+}
+
+export function JobCard({ jobId }: Props) {
   const [open, setOpen] = useState(false);
+  const { job, isLoading, isError, error, refetch } = useJobById(jobId, true);
 
-  const statusLabel = useMemo(() => (job ? STATUS_LABEL[job.status] : "…"), [job]);
+  const statusLabel = useMemo(() => (job ? STATUS_LABEL[job.status] ?? "—" : "…"), [job]);
   const badge = useMemo(
-    () => (job ? STATUS_BADGE[job.status] : STATUS_BADGE[0]),
+    () => (job ? STATUS_BADGE[job.status] ?? STATUS_BADGE[0] : STATUS_BADGE[0]),
     [job],
   );
 
-  if (!job) {
+  if (isError) {
+    return (
+      <div className="rounded-lg border border-rose-700/40 bg-rose-500/10 p-4 text-xs text-rose-200">
+        <p className="font-semibold">Error leyendo job #{jobId}</p>
+        <p className="mt-1 break-all text-rose-300/80">
+          {error instanceof Error ? error.message : String(error)}
+        </p>
+        <button
+          onClick={() => refetch()}
+          className="mt-2 rounded bg-rose-600/30 px-2 py-1 text-xs hover:bg-rose-600/50"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
+  if (isLoading || !job) {
     return (
       <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 text-sm text-slate-500 animate-pulse">
         Loading job #{jobId}…
       </div>
     );
   }
-
-  const budget = (Number(job.budget) / 10 ** TOKEN_DECIMALS).toFixed(2);
 
   return (
     <article className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 shadow-sm hover:border-slate-700 transition">
@@ -40,7 +80,7 @@ export function JobCard({ jobId, job }: Props) {
         </div>
         <div className="text-right">
           <p className="text-xs text-slate-500">Budget</p>
-          <p className="text-lg font-semibold text-emerald-300">{budget}</p>
+          <p className="text-lg font-semibold text-emerald-300">{fmtBudget(job.budget)}</p>
           <p className="text-[10px] text-slate-500">mUSDC</p>
         </div>
       </header>
@@ -48,24 +88,20 @@ export function JobCard({ jobId, job }: Props) {
       <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
         <div>
           <dt className="text-slate-500">Cliente</dt>
-          <dd className="truncate text-slate-300">{shortenAddress(job.client)}</dd>
+          <dd className="truncate text-slate-300">{fmtAddress(job.client)}</dd>
         </div>
         <div>
           <dt className="text-slate-500">Proveedor</dt>
-          <dd className="truncate text-slate-300">
-            {job.provider === "0x0000000000000000000000000000000000000000" ? "—" : shortenAddress(job.provider)}
-          </dd>
+          <dd className="truncate text-slate-300">{fmtAddress(job.provider)}</dd>
         </div>
         <div>
           <dt className="text-slate-500">Evaluador</dt>
-          <dd className="truncate text-slate-300">{shortenAddress(job.evaluator)}</dd>
+          <dd className="truncate text-slate-300">{fmtAddress(job.evaluator)}</dd>
         </div>
       </dl>
 
       <div className="mt-3 flex items-center justify-between">
-        <p className="text-xs text-slate-500">
-          Expira: {new Date(Number(job.expiresAt) * 1000).toLocaleString()}
-        </p>
+        <p className="text-xs text-slate-500">Expira: {fmtExpires(job.expiresAt)}</p>
         <button
           onClick={() => setOpen((v) => !v)}
           className="text-xs text-indigo-300 hover:underline"
@@ -82,10 +118,15 @@ export function JobCard({ jobId, job }: Props) {
             <Field label="Evaluator" value={job.evaluator} />
             <Field
               label="Deliverable ref"
-              value={job.deliverableRef === "0x0000000000000000000000000000000000000000000000000000000000000000" ? "—" : job.deliverableRef}
+              value={
+                job.deliverableRef ===
+                "0x0000000000000000000000000000000000000000000000000000000000000000"
+                  ? "—"
+                  : job.deliverableRef
+              }
             />
           </div>
-          <JobActions job={job} jobId={jobId} onAfterChange={() => setOpen((v) => v)} />
+          <JobActions job={job} jobId={jobId} onAfterChange={() => setOpen(true)} />
         </div>
       )}
     </article>
