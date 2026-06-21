@@ -1,21 +1,25 @@
-# Multisig Signer Wallets (localhost)
+# Deployment Info (sepolia)
 
-Contract: `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`
-Threshold: 2 of 3
+- Multisig:        `0x1e912Efb93b100931b094373D252b8Ef4379d37D`
+- JobMarketplace:  `0x2bB70f2D379db0c3195d5F2515B7EBd8D62E59dF`
+- Token (MockERC20): `0x84e4d6D90E14A457a15b5c5cD63844c20a0B6C73`
+- Threshold:       2 of 3
 
 > These are TEST wallets. Never reuse them for real funds.
 
-## Signer 1
+## Signers
 
-- Address: `0x6c71240C9fB09DaD2159BFA54fB4ED7F20206e45`
-- Private key: `0x0416cfe565019e511ef95a6967b5a191b4f96152a7b2c8ea640bbb098ce85622`
+### Signer 1
 
-## Signer 2
+- Address: `0x8d4aDCFD06592aEdb752DdC2E7Cfe74129Ee1b5C`
+- Private key: `0x19de6103528ea9b870222a1fcfa7d6676044e110457327b46b86c9e7ff3fe1f8`
 
-- Address: `0xC82e4E5B1AE463a72F4D9Ad9C5E915FcAA58aE44`
-- Private key: `0x3501d62d41d16bc41a1ba9c9e4bd0b7abfb3eeb28cd5a9153a2afc8902d9b643`
+### Signer 2
 
-## Signer 3
+- Address: `0x3B8C3fB6E1D150cD7AB6dd4A167fF6ed6ba909A2`
+- Private key: `0x0d19769fb7ff839e6d19facafc49fe9bba6d9ea3e95678b1d435d21eaa1b969d`
 
-- Address: `0x6652ad425159ed836720c3a2087c3e1B3679EB98`
-- Private key: `0x1ebc02990e6a63bbdce7d22295b81f201b1fdc769a7ad5698c91a914f844404a`
+### Signer 3
+
+- Address: `0xDAbF5f21504803AF068f6ECDf84bd47a78f64549`
+- Private key: `0xf8f3f241494e561d34a071fe6bb7b10762d6c0e1eb170f3495e2ceb03013d239`

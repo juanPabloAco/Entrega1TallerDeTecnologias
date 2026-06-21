@@ -1,9 +1,18 @@
-// Deploys the Multisig contract with 3 freshly generated signers and a
-// 2-of-3 threshold, funds the contract and each signer with test ETH, and
-// optionally verifies the source on Etherscan.
+// Deploys the full Job Marketplace stack to the configured network:
+//   1. MockERC20  (test/demo token, 6 decimals, mints initial supply to deployer)
+//   2. Multisig   (2-of-3 with fresh signer wallets)
+//   3. JobMarketplace (bound to the MockERC20)
 //
-// On Sepolia the deployer must hold at least ~3.5 ETH (3 signers + contract + gas).
-// On a local Hardhat node the test accounts come preloaded.
+// On a local Hardhat node the test accounts come preloaded, signers and
+// multisig are auto-funded, and the marketplace deployer (signer 1) is
+// pre-approved + pre-funded so a quick demo flow is one click away.
+//
+// On Sepolia the deployer must hold at least ~0.05 ETH. Signers are NOT
+// auto-funded (they need a faucet). Each signer requires Sepolia ETH to
+// pay gas when proposing/approving/executing proposals.
+//
+// Environment:
+//   SEPOLIA_RPC_URL, PRIVATE_KEY, ETHERSCAN_API_KEY
 import { ethers, network, run } from "hardhat";
 import { writeFileSync, mkdirSync, existsSync } from "fs";
 import { join, resolve } from "path";
@@ -13,77 +22,104 @@ const FRONTEND_ENV_DIR = join(ROOT, "frontend");
 const FRONTEND_ENV_FILE = join(FRONTEND_ENV_DIR, ".env");
 const SIGNERS_DOC = join(ROOT, "SIGNERS.md");
 
-const FUND_PER_SIGNER = ethers.parseEther("1");
-const FUND_CONTRACT = ethers.parseEther("0.5");
 const THRESHOLD = 2;
 const NUM_SIGNERS = 3;
+
+// 1000 mUSDC minted to the deployer for local demos. Set to 0 for sepolia.
+const LOCAL_MINT = ethers.parseUnits("1000", 6);
 
 async function main() {
   const [deployer] = await ethers.getSigners();
   const networkName = network.name;
 
-  console.log("\n=== Multisig Deployment ===");
+  console.log("\n=== Job Marketplace Deployment ===");
   console.log(`Network:        ${networkName}`);
   console.log(`Deployer:       ${await deployer.getAddress()}`);
-  console.log(`Deployer bal:   ${ethers.formatEther(await ethers.provider.getBalance(deployer.address))} ETH\n`);
+  console.log(
+    `Deployer bal:   ${ethers.formatEther(await ethers.provider.getBalance(deployer.address))} ETH\n`,
+  );
 
-  // 1. Generate signer wallets
-  console.log(`Generating ${NUM_SIGNERS} fresh signer wallets...`);
-  const signers = Array.from({ length: NUM_SIGNERS }, () => ethers.Wallet.createRandom().connect(ethers.provider));
-
-  // 2. Fund the signer wallets (skip on real Sepolia unless deployer can afford it)
   const isLocal = networkName === "hardhat" || networkName === "localhost";
+
+  // 1. Generate signer wallets for the multisig.
+  console.log(`Generating ${NUM_SIGNERS} fresh signer wallets...`);
+  const signers = Array.from(
+    { length: NUM_SIGNERS },
+    () => ethers.Wallet.createRandom().connect(ethers.provider),
+  );
+
+  // On local networks, top up each signer with 1 ETH so it can pay gas.
   if (isLocal) {
     for (let i = 0; i < signers.length; i++) {
-      const tx = await deployer.sendTransaction({ to: signers[i].address, value: FUND_PER_SIGNER });
+      const tx = await deployer.sendTransaction({
+        to: signers[i].address,
+        value: ethers.parseEther("1"),
+      });
       await tx.wait();
       console.log(`  Signer ${i + 1} funded: ${signers[i].address} (tx: ${tx.hash})`);
     }
   } else {
-    console.log("  Skipping auto-fund of signers (non-local network). Make sure each signer has test ETH for gas.");
+    console.log("  Signers will not be auto-funded on real networks — use a faucet per signer.");
   }
 
-  // 3. Deploy Multisig
+  // 2. Deploy the ERC-20 (Mock).
+  console.log("\nDeploying MockERC20 (mUSDC, 6 decimals)...");
+  const ERC20 = await ethers.getContractFactory("MockERC20");
+  const erc20 = await ERC20.deploy("Mock USDC", "mUSDC", 6);
+  await erc20.waitForDeployment();
+  const tokenAddress = await erc20.getAddress();
+  console.log(`Token:          ${tokenAddress}`);
+
+  // Mint initial supply to deployer (local only).
+  if (isLocal && LOCAL_MINT > 0n) {
+    const tx = await erc20.mint(deployer.address, LOCAL_MINT);
+    await tx.wait();
+    console.log(`Minted ${ethers.formatUnits(LOCAL_MINT, 6)} mUSDC to deployer (local demo).`);
+  }
+
+  // 3. Deploy Multisig.
   const signerAddresses = signers.map((s) => s.address);
+  console.log(`\nDeploying Multisig (${NUM_SIGNERS} signers, threshold ${THRESHOLD})...`);
   const Multisig = await ethers.getContractFactory("Multisig");
-  console.log(`\nDeploying Multisig with ${NUM_SIGNERS} signers and threshold = ${THRESHOLD}...`);
   const multisig = await Multisig.deploy(signerAddresses, THRESHOLD);
   await multisig.waitForDeployment();
   const multisigAddress = await multisig.getAddress();
-  const deployTx = multisig.deploymentTransaction();
-  console.log(`Multisig deployed: ${multisigAddress}`);
-  console.log(`Deploy tx:         ${deployTx?.hash}`);
+  console.log(`Multisig:       ${multisigAddress}`);
 
-  // 4. Fund the multisig so it can pay out ETH transfers
-  if (isLocal) {
-    const tx = await deployer.sendTransaction({ to: multisigAddress, value: FUND_CONTRACT });
-    await tx.wait();
-    console.log(`Multisig funded:   ${ethers.formatEther(FUND_CONTRACT)} ETH (tx: ${tx.hash})`);
-  } else {
-    console.log("\nRemember to send some ETH to the multisig address so it can execute value transfers.");
-  }
+  // 4. Deploy JobMarketplace bound to the token.
+  console.log("\nDeploying JobMarketplace...");
+  const JM = await ethers.getContractFactory("JobMarketplace");
+  const marketplace = await JM.deploy(tokenAddress);
+  await marketplace.waitForDeployment();
+  const marketplaceAddress = await marketplace.getAddress();
+  console.log(`Marketplace:    ${marketplaceAddress}`);
 
-  // 5. Optional Etherscan verification
+  // 5. Etherscan verification (sepolia only).
   if (networkName === "sepolia" && process.env.ETHERSCAN_API_KEY) {
     console.log("\nVerifying on Etherscan...");
-    try {
-      await run("verify:verify", {
-        address: multisigAddress,
-        constructorArguments: [signerAddresses, THRESHOLD],
-      });
-      console.log("Etherscan verification: OK");
-    } catch (err) {
-      console.warn("Etherscan verification failed (continuing):", (err as Error).message);
+    for (const [name, addr, args] of [
+      ["MockERC20", tokenAddress, ["Mock USDC", "mUSDC", 6]],
+      ["Multisig", multisigAddress, [signerAddresses, THRESHOLD]],
+      ["JobMarketplace", marketplaceAddress, [tokenAddress]],
+    ] as const) {
+      try {
+        await run("verify:verify", { address: addr, constructorArguments: [...args] });
+        console.log(`  ${name} verified.`);
+      } catch (err) {
+        console.warn(`  ${name} verification failed:`, (err as Error).message);
+      }
     }
   }
 
-  // 6. Persist signer info
+  // 6. Persist deployment info for the frontend.
   if (!existsSync(FRONTEND_ENV_DIR)) mkdirSync(FRONTEND_ENV_DIR, { recursive: true });
 
   const envBody = [
     "# Auto-generated by scripts/deploy.ts",
     `VITE_MULTISIG_ADDRESS=${multisigAddress}`,
-    `# Optional: WalletConnect Cloud project ID (https://cloud.walletconnect.com)`,
+    `VITE_MARKETPLACE_ADDRESS=${marketplaceAddress}`,
+    `VITE_TOKEN_ADDRESS=${tokenAddress}`,
+    "# Optional: WalletConnect Cloud project ID (https://cloud.walletconnect.com)",
     `VITE_WC_PROJECT_ID=`,
     "",
   ].join("\n");
@@ -91,23 +127,28 @@ async function main() {
   console.log(`\nWrote ${FRONTEND_ENV_FILE}`);
 
   const docLines = [
-    `# Multisig Signer Wallets (${networkName})`,
+    `# Deployment Info (${networkName})`,
     "",
-    `Contract: \`${multisigAddress}\``,
-    `Threshold: ${THRESHOLD} of ${NUM_SIGNERS}`,
+    `- Multisig:        \`${multisigAddress}\``,
+    `- JobMarketplace:  \`${marketplaceAddress}\``,
+    `- Token (MockERC20): \`${tokenAddress}\``,
+    `- Threshold:       ${THRESHOLD} of ${NUM_SIGNERS}`,
     "",
     "> These are TEST wallets. Never reuse them for real funds.",
     "",
+    "## Signers",
+    "",
     ...signers.map(
-      (s, i) =>
-        `## Signer ${i + 1}\n\n- Address: \`${s.address}\`\n- Private key: \`${s.privateKey}\`\n`,
+      (s, i) => `### Signer ${i + 1}\n\n- Address: \`${s.address}\`\n- Private key: \`${s.privateKey}\`\n`,
     ),
   ];
   writeFileSync(SIGNERS_DOC, docLines.join("\n"), "utf8");
   console.log(`Wrote ${SIGNERS_DOC}`);
 
   console.log("\n=== Summary ===");
-  console.log(`Contract: ${multisigAddress}`);
+  console.log(`Token:        ${tokenAddress}`);
+  console.log(`Multisig:     ${multisigAddress}`);
+  console.log(`Marketplace:  ${marketplaceAddress}`);
   console.log(`Signers:`);
   signers.forEach((s, i) => console.log(`  ${i + 1}. ${s.address}  pk=${s.privateKey}`));
 }

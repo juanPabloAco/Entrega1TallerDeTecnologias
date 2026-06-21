@@ -1,12 +1,12 @@
 import { Header } from "@/components/Header";
+import { JobBoard } from "@/components/JobBoard";
+import { CreateJobForm } from "@/components/CreateJobForm";
 import { ContractInfo } from "@/components/ContractInfo";
-import { ProposalForm } from "@/components/ProposalForm";
-import { ProposalList } from "@/components/ProposalList";
 import { NotSignerBanner } from "@/components/NotSignerBanner";
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-slate-950 text-slate-100">
       <Header />
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">
         <NotSignerBanner />
@@ -15,12 +15,12 @@ export default function App() {
             <ContractInfo />
           </div>
           <div className="lg:col-span-2">
-            <ProposalForm />
+            <CreateJobForm />
           </div>
         </div>
-        <ProposalList />
+        <JobBoard />
         <footer className="pt-6 text-center text-xs text-slate-600">
-          Programmatic multisig · Hardhat + Vite + Wagmi v2 + RainbowKit
+          Job Marketplace · Hardhat + Vite + Wagmi v2 + RainbowKit
         </footer>
       </main>
     </div>
