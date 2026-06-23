@@ -29,8 +29,6 @@ Entrega2/
 ├── package.json
 ├── .env.example
 ├── SIGNERS.md                   # auto-escrito por deploy.ts (signers + PKs de TEST)
-├── DEPLOY.md                    # guía de deploy paso a paso + addresses Sepolia
-├── docs/ISSUES.md               # problemas encontrados y cómo se resolvieron
 └── frontend/
     ├── src/
     │   ├── App.tsx              # Layout principal
@@ -100,7 +98,7 @@ VITE_WC_PROJECT_ID=                      # opcional (WalletConnect QR)
 VITE_ALCHEMY_API_KEY=<YOUR_ALCHEMY_KEY> # si está vacío cae a publicnode
 ```
 
-> `--legacy-peer-deps` es necesario por conflictos de peer-deps entre wagmi/rainbowkit/viem en npm 10 (ver `docs/ISSUES.md`).
+> `--legacy-peer-deps` es necesario por conflictos de peer-deps entre wagmi/rainbowkit/viem en npm 10.
 
 ---
 
@@ -155,9 +153,9 @@ Como `JobMarketplace` es stateful (los jobs viven en storage para siempre), para
 npx hardhat run scripts/redeploy-marketplace.ts --network sepolia
 ```
 
-Esto re-despliega sólo `MockERC20` + `JobMarketplace`, reusa el multisig de `SIGNERS.md`, y actualiza `frontend/.env` y `DEPLOY.md`.
+Esto re-despliega sólo `MockERC20` + `JobMarketplace`, reusa el multisig de `SIGNERS.md`, y actualiza `frontend/.env`.
 
-> ⚠️ **Caveat conocido**: la primera versión de `redeploy-marketplace.ts` actualiza la columna de addresses en `DEPLOY.md` pero deja los links de Etherscan apuntando a la dirección vieja. Si haces un redeploy, reescribí manualmente el link de la derecha en `DEPLOY.md:131-135`, o corré el script de fix que está en `DEPLOY.md:127`.
+> ⚠️ **Caveat conocido**: `redeploy-marketplace.ts` actualiza las addresses en `SIGNERS.md` y `frontend/.env`, pero los links de Etherscan en este `README.md` (sección 5) quedan apuntando a la dirección vieja. Si hacés un redeploy, reescribí manualmente los links de la columna derecha en las líneas 192-194.
 
 ### 4.3 Deploy manual (consola de hardhat)
 
@@ -297,9 +295,9 @@ npm run preview    # preview build
 
 5. **Evaluador se pre-rellena con la Multisig desplegada en el form de "Publicar Trabajo".**
    *Justificación*: no es un desvío del contrato, es una UX choice del frontend. Pegar la address de la Multisig cada vez es propenso a error; pre-rellenar con la `VITE_MULTISIG_ADDRESS` acelera la demo. Se puede sobreescribir para usar un evaluador EOA.
+6. **`redeploy-marketplace.ts` actualiza las addresses en `SIGNERS.md` y `frontend/.env` pero no los links de Etherscan en este `README.md`.**
 
-6. **`redeploy-marketplace.ts` actualiza la address en `DEPLOY.md` pero no el link de Etherscan.**
-   *Justificación*: bug conocido del script. Si hacés un redeploy, hay que tocar manualmente el link en la columna derecha de `DEPLOY.md:131-135`. Fix en backlog.
+   *Justificación*: bug conocido del script. Si hacés un redeploy, hay que tocar manualmente los links de Etherscan en la columna derecha de la tabla de la sección 5. Fix en backlog.
 
 ---
 
@@ -373,7 +371,7 @@ npm run preview    # preview build
 - **`DeadlineInPast`** al crear un job → `expiresAt` debe ser estrictamente mayor que `block.timestamp`. Si tu reloj está desincronizado, usá presets de 7+ días.
 - **El job queda en `Submitted` para siempre** → nadie con permisos ejecuta. Usar el Caso 2 o esperar a la expiración y llamar `claimRefund`.
 - **Tablero muestra "Loading Job #N…" indefinidamente** → chequeá DevTools Console. La causa más probable es un RPC que devuelve error; agregá `VITE_ALCHEMY_API_KEY` al `frontend/.env` para evitar rate limits de publicnode.
-- **`baseAccount` not exported / `wagmi/chains` no member `sepolia`** → `npm install --legacy-peer-deps` en `frontend/`. Ver `docs/ISSUES.md` para los conflictos de versiones conocidos.
+- **`baseAccount` not exported / `wagmi/chains` no member `sepolia`** → `npm install --legacy-peer-deps` en `frontend/`. Conflicto de peer-deps entre wagmi/rainbowkit/viem en npm 10.
 
 ---
 
@@ -416,5 +414,4 @@ npm run build
 - RainbowKit — https://www.rainbowkit.com
 - ERC-8183 (Agentic Commerce Protocol) — https://eips.ethereum.org/EIPS/eip-8183
 - OpenZeppelin Contracts — https://docs.openzeppelin.com/contracts
-- `docs/ISSUES.md` — problemas encontrados durante el desarrollo y sus fixes
-- `DEPLOY.md` — guía detallada de deploy + troubleshooting por comandos
+- `SIGNERS.md` — addresses de signers + private keys de TEST (auto-generado por `deploy.ts`)
