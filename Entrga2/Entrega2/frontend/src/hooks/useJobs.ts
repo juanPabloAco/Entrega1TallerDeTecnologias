@@ -53,21 +53,27 @@ export const STATUS_BADGE: Record<number, string> = {
 const MAX_JOBS = 64;
 
 function parseJobResult(result: unknown): JobTuple | undefined {
-  if (!result) return undefined;
-  const arr = result as unknown as readonly unknown[];
-  if (!Array.isArray(arr) || arr.length < 8) return undefined;
+  if (!result || typeof result !== "object") return undefined;
+  const r = result as Record<string, unknown> & readonly unknown[];
+  const get = (key: string, idx: number): unknown => {
+    if (r[key] !== undefined) return r[key];
+    if (Array.isArray(r) && r.length > idx) return r[idx];
+    return undefined;
+  };
   try {
-    const status = Number(arr[6] as number);
+    const status = Number(get("status", 6) as number);
     if (status === 0) return undefined;
+    const ZERO_BYTES32 = ("0x" + "0".repeat(64)) as `0x${string}`;
     return {
-      client: arr[0] as `0x${string}`,
-      provider: arr[1] as `0x${string}`,
-      evaluator: arr[2] as `0x${string}`,
-      budget: BigInt(arr[3] as bigint),
-      description: String(arr[4] ?? ""),
-      deliverableRef: (arr[5] as `0x${string}`) ?? ("0x" + "0".repeat(64)),
+      client: get("client", 0) as `0x${string}`,
+      provider: get("provider", 1) as `0x${string}`,
+      evaluator: get("evaluator", 2) as `0x${string}`,
+      budget: BigInt(get("budget", 3) as bigint),
+      description: String(get("description", 4) ?? ""),
+      deliverableRef:
+        (get("deliverableRef", 5) as `0x${string}` | undefined) ?? ZERO_BYTES32,
       status,
-      expiresAt: BigInt(arr[7] as bigint),
+      expiresAt: BigInt(get("expiresAt", 7) as bigint),
     };
   } catch (e) {
     console.warn("[parseJobResult] failed:", e, "raw:", result);

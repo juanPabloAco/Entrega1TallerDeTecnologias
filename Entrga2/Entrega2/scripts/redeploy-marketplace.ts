@@ -69,9 +69,19 @@ async function main() {
   // Update DEPLOY.md
   if (existsSync(DEPLOY_MD)) {
     let md = readFileSync(DEPLOY_MD, "utf8");
-    md = md.replace(/\| \*\*Multisig\*\* \| `0x[0-9a-fA-F]{40}` \|/, `| **Multisig** | \`${multisigAddress}\` |`);
-    md = md.replace(/\| \*\*JobMarketplace\*\* \| `0x[0-9a-fA-F]{40}` \|/, `| **JobMarketplace** | \`${marketplaceAddress}\` |`);
-    md = md.replace(/\| \*\*MockERC20 \(mUSDC\)\*\* \| `0x[0-9a-fA-F]{40}` \|/, `| **MockERC20 (mUSDC)** | \`${tokenAddress}\` |`);
+    const EXPLORER = "https://sepolia.etherscan.io";
+    md = md.replace(
+      /\| \*\*Multisig\*\* \| `0x[0-9a-fA-F]{40}` \| https:\/\/sepolia\.etherscan\.io\/address\/0x[0-9a-fA-F]{40} \|/,
+      `| **Multisig** | \`${multisigAddress}\` | ${EXPLORER}/address/${multisigAddress} |`,
+    );
+    md = md.replace(
+      /\| \*\*JobMarketplace\*\* \| `0x[0-9a-fA-F]{40}` \| https:\/\/sepolia\.etherscan\.io\/address\/0x[0-9a-fA-F]{40} \|/,
+      `| **JobMarketplace** | \`${marketplaceAddress}\` | ${EXPLORER}/address/${marketplaceAddress} |`,
+    );
+    md = md.replace(
+      /\| \*\*MockERC20 \(mUSDC\)\*\* \| `0x[0-9a-fA-F]{40}` \| https:\/\/sepolia\.etherscan\.io\/address\/0x[0-9a-fA-F]{40} \|/,
+      `| **MockERC20 (mUSDC)** | \`${tokenAddress}\` | ${EXPLORER}/address/${tokenAddress} |`,
+    );
     writeFileSync(DEPLOY_MD, md, "utf8");
     console.log(`Updated ${DEPLOY_MD}`);
   }

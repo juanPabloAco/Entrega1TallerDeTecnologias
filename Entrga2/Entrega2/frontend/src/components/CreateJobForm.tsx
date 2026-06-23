@@ -193,7 +193,7 @@ export function CreateJobForm() {
         </button>
 
         {hook.isConfirmed && (
-          <p className="text-xs text-emerald-300">✓ Trabajo creado. Esperá 15s para verlo aparecer en el tablero.</p>
+          <p className="text-xs text-emerald-300">✓ Trabajo creado. Aparecerá en el tablero en unos segundos.</p>
         )}
         {error && (
           <p className="rounded bg-rose-500/10 px-3 py-2 text-xs text-rose-300 break-all">

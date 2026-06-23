@@ -106,20 +106,39 @@ function useSnapshotAction(
     setSnapshot(a);
   };
   useEffect(() => {
+    if (!snapshot) return;
+    const terminal =
+      hook.simulationError ||
+      hook.writeError ||
+      hook.receiptError ||
+      hook.isConfirmed;
+    if (terminal) {
+      if (hook.isConfirmed) {
+        setSnapshot(undefined);
+      } else {
+        setSnapshot(undefined);
+        hook.reset?.();
+      }
+      return;
+    }
     if (
-      snapshot &&
       hook.canSubmit &&
       !hook.isWriting &&
-      !hook.isConfirming &&
-      !hook.isConfirmed &&
-      !hook.simulationError
+      !hook.isConfirming
     ) {
       hook.submit?.();
       setSnapshot(undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hook.canSubmit, snapshot, hook.simulationError]);
-  const simulating = snapshot !== undefined && !hook.canSubmit && !hook.simulationError;
+  }, [
+    hook.canSubmit,
+    snapshot,
+    hook.simulationError,
+    hook.writeError,
+    hook.receiptError,
+    hook.isConfirmed,
+  ]);
+  const simulating = snapshot !== undefined && !hook.canSubmit && !hook.simulationError && !hook.writeError && !hook.receiptError;
   return { ...hook, click, simulating };
 }
 
@@ -178,6 +197,9 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
       !approveHook.simulationError
     ) {
       approveHook.submit?.();
+      setPendingApprove(undefined);
+    }
+    if (pendingApprove !== undefined && approveHook.simulationError) {
       setPendingApprove(undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -299,22 +321,30 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
 
         {needsApprove ? (
           <ActionButton
-            busy={approveHook.isWriting || approveHook.isConfirming || pendingApprove !== undefined}
-            disabled={!approveHook.canSubmit || approveHook.isWriting || approveHook.isConfirming}
+            busy={
+              approveHook.isWriting ||
+              approveHook.isConfirming ||
+              (pendingApprove !== undefined && !approveHook.simulationError && !approveHook.writeError)
+            }
+            disabled={approveHook.isWriting || approveHook.isConfirming}
             onClick={() => setPendingApprove(budget)}
           >
-            {pendingApprove !== undefined ? "Esperando confirmación…" : "Aprobar mUSDC"}
+            {pendingApprove !== undefined && !approveHook.simulationError && !approveHook.writeError
+              ? "Esperando confirmación…"
+              : "Aprobar mUSDC"}
           </ActionButton>
         ) : (
           <ActionButton
             busy={fundHook.isWriting || fundHook.isConfirming || fundHook.simulating}
-            disabled={!fundHook.canSubmit || fundHook.isWriting || fundHook.isConfirming}
+            disabled={fundHook.isWriting || fundHook.isConfirming}
             onClick={() => {
               fundHook.click();
               setTimeout(onAfterChange, 1500);
             }}
           >
-            Fondear Trabajo
+            {fundHook.writeError || fundHook.receiptError
+              ? "Reintentar Fondear"
+              : "Fondear Trabajo"}
           </ActionButton>
         )}
 
@@ -328,13 +358,15 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
           <ActionButton
             tone="danger"
             busy={rejectHook.isWriting || rejectHook.isConfirming || rejectHook.simulating}
-            disabled={!rejectHook.canSubmit || rejectHook.isWriting || rejectHook.isConfirming || reasonInput.trim() === ""}
+            disabled={rejectHook.isWriting || rejectHook.isConfirming || reasonInput.trim() === ""}
             onClick={() => {
               rejectHook.click();
               setTimeout(onAfterChange, 1500);
             }}
           >
-            Rechazar (Open)
+            {rejectHook.writeError || rejectHook.receiptError
+              ? "Reintentar Rechazo"
+              : "Rechazar (Open)"}
           </ActionButton>
         </div>
 

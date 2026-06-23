@@ -43,17 +43,21 @@ export function useProposals(count: number) {
 
   const proposals: (ProposalTuple | undefined)[] = (query.data ?? []).map((r) => {
     if (r.status !== "success" || !r.result) return undefined;
-    const arr = r.result as unknown as readonly unknown[];
-    if (!Array.isArray(arr) || arr.length < 7) return undefined;
+    const obj = r.result as Record<string, unknown> & readonly unknown[];
+    const get = (key: string, idx: number): unknown => {
+      if (obj[key] !== undefined) return obj[key];
+      if (Array.isArray(obj) && obj.length > idx) return obj[idx];
+      return undefined;
+    };
     try {
       return {
-        target: arr[0] as `0x${string}`,
-        value: BigInt(arr[1] as bigint),
-        data: arr[2] as `0x${string}`,
-        proposer: arr[3] as `0x${string}`,
-        approvalCount: BigInt(arr[4] as bigint),
-        executed: Boolean(arr[5]),
-        cancelled: Boolean(arr[6]),
+        target: get("target", 0) as `0x${string}`,
+        value: BigInt(get("value", 1) as bigint),
+        data: get("data", 2) as `0x${string}`,
+        proposer: get("proposer", 3) as `0x${string}`,
+        approvalCount: BigInt(get("approvalCount", 4) as bigint),
+        executed: Boolean(get("executed", 5)),
+        cancelled: Boolean(get("cancelled", 6)),
       };
     } catch {
       return undefined;

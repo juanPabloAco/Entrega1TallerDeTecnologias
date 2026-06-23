@@ -66,6 +66,7 @@ export function useJobAction(
     writeError,
     receiptError,
     hash,
+    reset,
     submit: () => simulation?.request && writeContract(simulation.request),
   };
 }
@@ -114,6 +115,7 @@ export function useApproveToken(amount: bigint | undefined, spender = MARKETPLAC
     writeError,
     receiptError,
     hash,
+    reset,
     submit: () => simulation?.request && writeContract(simulation.request),
   };
 }
