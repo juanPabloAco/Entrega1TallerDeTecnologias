@@ -52,7 +52,13 @@ export function ProposalList() {
         <div className="grid gap-4 md:grid-cols-2">
           {proposals.map((p, i) =>
             p ? (
-              <ProposalCard key={i} id={i} proposal={p} threshold={threshold} />
+              <ProposalCard
+                key={i}
+                id={i}
+                proposal={p}
+                threshold={threshold}
+                refetchProposals={refetch}
+              />
             ) : (
               <div
                 key={i}

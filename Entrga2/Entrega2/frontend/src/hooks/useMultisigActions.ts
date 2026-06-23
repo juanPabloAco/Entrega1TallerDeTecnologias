@@ -56,6 +56,7 @@ export function useMultisigAction(
     writeError,
     receiptError,
     hash,
+    reset,
     submit: () => simulation?.request && writeContract(simulation.request),
   };
 }

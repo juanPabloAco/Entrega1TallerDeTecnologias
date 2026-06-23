@@ -8,21 +8,41 @@ type Props = {
   id: number;
   proposal: ProposalTuple;
   threshold: bigint;
+  refetchProposals: () => void;
 };
 
-export function ProposalCard({ id, proposal, threshold }: Props) {
+function humanizeError(e: Error | null | undefined): string {
+  if (!e) return "";
+  const m = e.message || "";
+  const match = m.match(/reverted with(?: custom error)? ['"]?([^'"]+)['"]?/);
+  if (match) return `Contrato revirtió: ${match[1]}`;
+  if (/User rejected|denied/i.test(m)) return "Transacción rechazada en la wallet.";
+  if (/insufficient funds/i.test(m)) return "Sin fondos para gas.";
+  return m.slice(0, 200);
+}
+
+export function ProposalCard({ id, proposal, threshold, refetchProposals }: Props) {
   const { address: account, isConnected } = useAccount();
 
   const {
     isSigner,
     hasApproved,
-    canApprove,
     canExecute,
     canCancel,
     approve,
     execute,
     cancel,
-  } = useProposalCard({ id, proposal, threshold, account });
+    approveError,
+    executeError,
+    cancelError,
+    approveBusy,
+    executeBusy,
+    cancelBusy,
+    approveConfirmed,
+    executeConfirmed,
+    cancelConfirmed,
+    approvalsMet,
+  } = useProposalCard({ id, proposal, threshold, account, refetchProposals });
 
   const approvals = Number(proposal.approvalCount);
   const thresh = Number(threshold);
@@ -37,6 +57,13 @@ export function ProposalCard({ id, proposal, threshold }: Props) {
     : proposal.cancelled
       ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
       : "bg-amber-500/20 text-amber-300 border-amber-500/30";
+
+  const errorBanner = (e: Error | null | undefined) =>
+    e ? (
+      <p className="mt-2 text-xs text-rose-300 bg-rose-500/10 rounded px-2 py-1 break-all">
+        {humanizeError(e)}
+      </p>
+    ) : null;
 
   return (
     <article className="rounded-xl border border-slate-800 bg-slate-900/30 p-5 transition hover:border-slate-700">
@@ -92,27 +119,56 @@ export function ProposalCard({ id, proposal, threshold }: Props) {
       {isConnected && isSigner && !proposal.executed && !proposal.cancelled && (
         <footer className="mt-4 flex flex-wrap gap-2">
           <ActionButton
-            label={hasApproved ? "Approved" : "Approve"}
-            disabled={hasApproved || !canApprove}
+            label={
+              hasApproved
+                ? "Approved"
+                : approveConfirmed
+                  ? "Approved ✓"
+                  : approveBusy
+                    ? "Confirming…"
+                    : approveError
+                      ? "Reintentar Approve"
+                      : "Approve"
+            }
+            disabled={hasApproved || approveBusy}
             onClick={approve}
             variant="primary"
           />
           <ActionButton
-            label="Execute"
-            disabled={!canExecute}
+            label={
+              executeConfirmed
+                ? "Executed ✓"
+                : executeBusy
+                  ? "Confirming…"
+                  : executeError
+                    ? "Reintentar Execute"
+                    : "Execute"
+            }
+            disabled={!canExecute || executeBusy}
             onClick={execute}
             variant="success"
-            hint={approvals < thresh ? "Need more approvals" : undefined}
+            hint={!approvalsMet ? `Need ${Number(threshold) - approvals} more approval(s)` : undefined}
           />
           <ActionButton
-            label="Cancel"
-            disabled={!canCancel}
+            label={
+              cancelConfirmed
+                ? "Cancelled ✓"
+                : cancelBusy
+                  ? "Confirming…"
+                  : cancelError
+                    ? "Reintentar Cancel"
+                    : "Cancel"
+            }
+            disabled={!canCancel || cancelBusy}
             onClick={cancel}
             variant="danger"
             hint={!canCancel && account !== proposal.proposer ? "Only proposer" : undefined}
           />
         </footer>
       )}
+      {errorBanner(approveError as Error | null | undefined)}
+      {errorBanner(executeError as Error | null | undefined)}
+      {errorBanner(cancelError as Error | null | undefined)}
     </article>
   );
 }
