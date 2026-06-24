@@ -34,7 +34,6 @@ export function useProposals(count: number) {
     },
   });
 
-  // One watch per address catches every multisig event.
   useWatchContractEvent({
     address: MULTISIG_ADDRESS,
     abi: multisigAbi,

@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useReadContract } from "wagmi";
+import {
+  useReadContract,
+  useSimulateContract,
+  useWaitForTransactionReceipt,
+  useWalletClient,
+} from "wagmi";
 import { MULTISIG_ADDRESS, multisigAbi } from "@/contracts";
 import { useIsSigner } from "@/hooks/useMultisigInfo";
-import { useMultisigAction } from "@/hooks/useMultisigActions";
 import type { ProposalTuple } from "@/hooks/useProposals";
 
 type Args = {
@@ -15,47 +19,83 @@ type Args = {
 
 type Action = "approve" | "execute" | "cancel";
 
-function useSnapshotMultisigAction(
-  action: Action,
-  enabled: boolean,
-  buildArgs: () => readonly unknown[] | undefined,
-) {
-  const [snapshot, setSnapshot] = useState<readonly unknown[] | undefined>(undefined);
-  const hook = useMultisigAction(action, snapshot, undefined, enabled);
-  const click = () => {
-    const a = buildArgs();
-    if (!a) return;
-    setSnapshot(a);
-  };
+function useIsolatedMultisigAction(action: Action, args: readonly unknown[] | undefined) {
+  const enabled =
+    Boolean(args) && MULTISIG_ADDRESS !== "0x0000000000000000000000000000000000000000";
+
+  const { data: simulation, error: simulationError } = useSimulateContract({
+    address: MULTISIG_ADDRESS,
+    abi: multisigAbi,
+    functionName: action,
+    args: args as never,
+    query: { enabled },
+  });
+
+  const { data: walletClient } = useWalletClient();
+
+  const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
+  const [isWriting, setIsWriting] = useState(false);
+  const [writeError, setWriteError] = useState<Error | null>(null);
+
+  const {
+    isLoading: isConfirming,
+    isSuccess: isConfirmed,
+    error: receiptError,
+  } = useWaitForTransactionReceipt({ hash });
+
   useEffect(() => {
-    if (!snapshot) return;
-    const terminal =
-      hook.simulationError ||
-      hook.writeError ||
-      hook.receiptError ||
-      hook.isConfirmed;
-    if (terminal) {
-      if (!hook.isConfirmed) {
-        hook.reset?.();
-      }
-      setSnapshot(undefined);
+    if (isConfirmed) {
+      const t = setTimeout(() => {
+        setHash(undefined);
+        setIsWriting(false);
+      }, 3000);
+      return () => clearTimeout(t);
+    }
+  }, [isConfirmed]);
+
+  const click = async () => {
+    setWriteError(null);
+    if (!simulation?.request) {
+      const errMsg = simulationError
+        ? `La simulación falló: ${simulationError.message.slice(0, 200)}`
+        : "No hay simulación lista. Esperá unos segundos y reintentá.";
+      console.warn(`[${action}] no simulation request available`, { simulation, simulationError });
+      setWriteError(new Error(errMsg));
       return;
     }
-    if (hook.canSubmit && !hook.isWriting && !hook.isConfirming) {
-      hook.submit?.();
-      setSnapshot(undefined);
+    if (!walletClient) {
+      setWriteError(new Error("Wallet no conectada."));
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    hook.canSubmit,
-    snapshot,
-    hook.simulationError,
-    hook.writeError,
-    hook.receiptError,
-    hook.isConfirmed,
-  ]);
-  const simulating = snapshot !== undefined && !hook.canSubmit && !hook.simulationError && !hook.writeError && !hook.receiptError;
-  return { ...hook, click, simulating };
+    setIsWriting(true);
+    try {
+      const txHash = await walletClient.writeContract(simulation.request);
+      setHash(txHash);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setWriteError(err);
+      setIsWriting(false);
+      console.error(`[${action}] writeContract failed:`, e);
+    }
+  };
+
+  const reset = () => {
+    setHash(undefined);
+    setIsWriting(false);
+    setWriteError(null);
+  };
+
+  return {
+    click,
+    isWriting,
+    isConfirming,
+    isConfirmed,
+    simulationError: simulationError as Error | null,
+    writeError,
+    receiptError: receiptError as Error | null,
+    reset,
+    hasRequest: Boolean(simulation?.request),
+  };
 }
 
 export function useProposalCard({ id, proposal, threshold, account, refetchProposals }: Args) {
@@ -80,23 +120,16 @@ export function useProposalCard({ id, proposal, threshold, account, refetchPropo
   const isActive = !proposal.executed && !proposal.cancelled;
   const isProposer = account && account.toLowerCase() === proposal.proposer.toLowerCase();
 
-  const approveHook = useSnapshotMultisigAction(
-    "approve",
-    isActive,
-    () => (isSigner && isActive && !hasApproved ? [BigInt(id)] : undefined),
-  );
+  const approveArgs: readonly unknown[] | undefined =
+    isSigner && isActive && !hasApproved ? [BigInt(id)] : undefined;
+  const executeArgs: readonly unknown[] | undefined =
+    isSigner && isActive && approvalsMet ? [BigInt(id)] : undefined;
+  const cancelArgs: readonly unknown[] | undefined =
+    isSigner && isActive && Boolean(isProposer) ? [BigInt(id)] : undefined;
 
-  const executeHook = useSnapshotMultisigAction(
-    "execute",
-    isActive,
-    () => (isSigner && isActive ? [BigInt(id)] : undefined),
-  );
-
-  const cancelHook = useSnapshotMultisigAction(
-    "cancel",
-    isActive,
-    () => (isSigner && isActive && Boolean(isProposer) ? [BigInt(id)] : undefined),
-  );
+  const approveHook = useIsolatedMultisigAction("approve", approveArgs);
+  const executeHook = useIsolatedMultisigAction("execute", executeArgs);
+  const cancelHook = useIsolatedMultisigAction("cancel", cancelArgs);
 
   useEffect(() => {
     if (approveHook.isConfirmed) {
@@ -118,21 +151,18 @@ export function useProposalCard({ id, proposal, threshold, account, refetchPropo
       isSigner: isSigner || isSignerLoading,
       hasApproved,
       canApprove: isSigner && isActive && !hasApproved,
-      canExecute: isSigner && isActive,
+      canExecute: isSigner && isActive && approvalsMet,
       canCancel: isSigner && isActive && Boolean(isProposer),
-      approve: () => {
-        approveHook.click();
+      approve: async () => {
+        await approveHook.click();
         setTimeout(refetchHasApproved, 1500);
         setTimeout(refetchProposals, 2000);
       },
       execute: () => executeHook.click(),
       cancel: () => cancelHook.click(),
-      approveError:
-        approveHook.simulationError || approveHook.writeError || approveHook.receiptError,
-      executeError:
-        executeHook.simulationError || executeHook.writeError || executeHook.receiptError,
-      cancelError:
-        cancelHook.simulationError || cancelHook.writeError || cancelHook.receiptError,
+      approveError: approveHook.simulationError || approveHook.writeError || approveHook.receiptError,
+      executeError: executeHook.simulationError || executeHook.writeError || executeHook.receiptError,
+      cancelError: cancelHook.simulationError || cancelHook.writeError || cancelHook.receiptError,
       approveBusy: approveHook.isWriting || approveHook.isConfirming,
       executeBusy: executeHook.isWriting || executeHook.isConfirming,
       cancelBusy: cancelHook.isWriting || cancelHook.isConfirming,
@@ -140,6 +170,9 @@ export function useProposalCard({ id, proposal, threshold, account, refetchPropo
       executeConfirmed: executeHook.isConfirmed,
       cancelConfirmed: cancelHook.isConfirmed,
       approvalsMet,
+      resetApprove: approveHook.reset,
+      resetExecute: executeHook.reset,
+      resetCancel: cancelHook.reset,
     }),
     [
       isSigner,

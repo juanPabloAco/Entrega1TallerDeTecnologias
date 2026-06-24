@@ -15,14 +15,34 @@ function humanizeError(e: Error | null | undefined): string {
   if (!e) return "";
   const m = e.message || "";
   const match = m.match(/reverted with(?: custom error)? ['"]?([^'"]+)['"]?/);
-  if (match) return `Contrato revirtió: ${match[1]}`;
-  if (/JobNotFound|InvalidState|NotClient|NotProvider|NotEvaluator|JobAlreadyExpired|JobNotExpired|ZeroBudget|ZeroAddress|ZeroReason|NoProvider|ProviderAlreadySet/i.test(m)) {
+  if (match) {
+    const errName = match[1];
+    if (errName === "InsufficientAllowance") {
+      return "El marketplace no tiene allowance suficiente del token. Click 'Aprobar mUSDC' antes de 'Fondear Trabajo'.";
+    }
+    if (errName === "ERC20InsufficientAllowance") {
+      return "Allowance insuficiente: aprobaste un monto menor al budget del trabajo. Click 'Aprobar mUSDC' para re-aprobar con el monto correcto.";
+    }
+    if (errName === "ERC20InsufficientBalance") {
+      return "No tenés suficientes mUSDC en la wallet para fondear este trabajo.";
+    }
+    if (errName === "JobNotFound") return "El jobId no existe en el contrato.";
+    if (errName === "NotClient") return "Sólo el cliente del job puede ejecutar esta acción.";
+    if (errName === "NotProvider") return "Sólo el provider del job puede ejecutar esta acción.";
+    if (errName === "NotEvaluator") return "Sólo el evaluator del job puede ejecutar esta acción.";
+    if (errName === "InvalidState") return "El job no está en el estado requerido para esta acción.";
+    if (errName === "NoProvider") return "Este job aún no tiene provider asignado.";
+    if (errName === "JobAlreadyExpired") return "El job ya expiró.";
+    if (errName === "ProviderAlreadySet") return "El provider ya fue asignado y no puede cambiarse.";
+    return `Contrato revirtió: ${errName}`;
+  }
+  if (/JobNotFound|InvalidState|NotClient|NotProvider|NotEvaluator|JobAlreadyExpired|JobNotExpired|ZeroBudget|ZeroAddress|ZeroReason|NoProvider|ProviderAlreadySet|InsufficientAllowance|ERC20InsufficientAllowance|ERC20InsufficientBalance/i.test(m)) {
     return m.match(/reverted[^]*?["'](\w+)["']/)?.[1] ?? "Reverted";
   }
   if (/User rejected|denied/i.test(m)) return "Transacción rechazada en la wallet.";
   if (/insufficient funds/i.test(m)) return "Sin fondos para gas. Fondeá la wallet con Sepolia ETH.";
   if (/Unexpected error/i.test(m)) return "Error inesperado al simular. Verificá la red y los fondos.";
-  return m.slice(0, 220);
+  return m.slice(0, 250);
 }
 
 function bytes32FromText(text: string): `0x${string}` {
@@ -65,12 +85,14 @@ function ActionButton({
   onClick,
   busy,
   tone = "primary",
+  title,
   children,
 }: {
   disabled?: boolean;
   onClick: () => void;
   busy?: boolean;
   tone?: "primary" | "danger" | "neutral";
+  title?: string;
   children: React.ReactNode;
 }) {
   const tones: Record<string, string> = {
@@ -82,6 +104,7 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={disabled || busy}
+      title={title}
       className={`w-full rounded-md px-3 py-2 text-sm font-medium text-white transition disabled:cursor-not-allowed ${tones[tone]}`}
     >
       {children}
@@ -89,10 +112,6 @@ function ActionButton({
   );
 }
 
-/**
- * Hook that wraps useJobAction with a "snapshot at click" pattern, so the
- * args simulated by wagmi are exactly the args sent to the chain.
- */
 function useSnapshotAction(
   action: Parameters<typeof useJobAction>[0],
   buildArgs: () => readonly unknown[] | undefined,
@@ -107,18 +126,20 @@ function useSnapshotAction(
   };
   useEffect(() => {
     if (!snapshot) return;
-    const terminal =
-      hook.simulationError ||
-      hook.writeError ||
-      hook.receiptError ||
-      hook.isConfirmed;
-    if (terminal) {
-      if (hook.isConfirmed) {
-        setSnapshot(undefined);
-      } else {
-        setSnapshot(undefined);
-        hook.reset?.();
-      }
+    if (hook.simulationError) {
+      setSnapshot(undefined);
+      return;
+    }
+    if (hook.receiptError && !hook.isWriting && !hook.isConfirming) {
+      setSnapshot(undefined);
+      return;
+    }
+    if (hook.writeError && !hook.isWriting && !hook.isConfirming) {
+      setSnapshot(undefined);
+      return;
+    }
+    if (hook.isConfirmed) {
+      setSnapshot(undefined);
       return;
     }
     if (
@@ -129,8 +150,7 @@ function useSnapshotAction(
       hook.submit?.();
       setSnapshot(undefined);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
+    }, [
     hook.canSubmit,
     snapshot,
     hook.simulationError,
@@ -143,8 +163,6 @@ function useSnapshotAction(
 }
 
 export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId: number; onAfterChange: () => void }) {
-  // Defensive: if any required field is missing, render a loading state instead
-  // of crashing the page (which is what makes the "Detalle" panel go blank).
   const jobReady =
     !!job &&
     job.budget !== undefined &&
@@ -171,7 +189,6 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
 
   const budget = job.budget;
 
-  // ----- setProvider -----
   const setProviderHook = useSnapshotAction(
     "setProvider",
     () => {
@@ -181,8 +198,7 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
     },
   );
 
-  // ----- Approve + Fund (client in Open with provider) -----
-  const allowance = useTokenAllowance(address);
+  const { allowance } = useTokenAllowance(address);
   const needsApprove = allowance < budget;
 
   const [pendingApprove, setPendingApprove] = useState<bigint | undefined>(undefined);
@@ -202,15 +218,13 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
     if (pendingApprove !== undefined && approveHook.simulationError) {
       setPendingApprove(undefined);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approveHook.canSubmit, pendingApprove, approveHook.simulationError]);
+    }, [approveHook.canSubmit, pendingApprove, approveHook.simulationError]);
 
   const fundHook = useSnapshotAction(
     "fund",
     () => (role === "client" && job.status === 1 && !providerIsZero && !needsApprove ? [BigInt(jobId)] : undefined),
   );
 
-  // ----- Submit (provider in Funded) -----
   const submitHook = useSnapshotAction(
     "submit",
     () => {
@@ -222,7 +236,6 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
     },
   );
 
-  // ----- Complete / Reject (evaluator on Submitted, client on Open) -----
   const reasonBytes = reasonInput.trim() === ""
     ? undefined
     : isBytes32Like(reasonInput.trim())
@@ -247,8 +260,6 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
     },
   );
 
-  // ----- claimRefund: anyone, only after expiry. Note: in-memory doesn't auto-warp time,
-  // so this is only callable from chain after the deadline has actually passed. -----
   const claimRefundHook = useSnapshotAction(
     "claimRefund",
     () => (job.status === 2 || job.status === 3 ? [BigInt(jobId)] : undefined),
@@ -264,7 +275,6 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
   const renderErrorBanner = (e: Error | null | undefined) =>
     e ? <p className="text-xs text-rose-300 bg-rose-500/10 rounded px-2 py-1 break-all">{humanizeError(e)}</p> : null;
 
-  // ----- Open, no provider -----
   if (role === "client" && job.status === 1 && providerIsZero) {
     return (
       <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
@@ -286,11 +296,25 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
             providerInput.length !== 42
           }
           onClick={() => {
+            if (
+              setProviderHook.writeError ||
+              setProviderHook.receiptError ||
+              setProviderHook.hasUnacknowledgedError
+            ) {
+              setProviderHook.reset?.();
+            }
             setProviderHook.click();
             setTimeout(onAfterChange, 1500);
           }}
+          title={
+            setProviderHook.simulationError
+              ? humanizeError(setProviderHook.simulationError)
+              : undefined
+          }
         >
-          Asignar Proveedor
+          {setProviderHook.writeError || setProviderHook.receiptError || setProviderHook.hasUnacknowledgedError
+            ? "Reintentar Asignar"
+            : "Asignar Proveedor"}
         </ActionButton>
         <TxStatus
           isWriting={setProviderHook.isWriting}
@@ -299,11 +323,11 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
           error={setProviderHook.writeError || setProviderHook.simulationError || setProviderHook.receiptError}
           label="Provider set"
         />
+        {renderErrorBanner(setProviderHook.simulationError || setProviderHook.writeError || setProviderHook.receiptError)}
       </div>
     );
   }
 
-  // ----- Open, has provider (client can fund or reject) -----
   if (role === "client" && job.status === 1) {
     return (
       <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
@@ -327,22 +351,42 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
               (pendingApprove !== undefined && !approveHook.simulationError && !approveHook.writeError)
             }
             disabled={approveHook.isWriting || approveHook.isConfirming}
-            onClick={() => setPendingApprove(budget)}
+            onClick={() => {
+              if (approveHook.writeError || approveHook.receiptError || approveHook.hasUnacknowledgedError) {
+                approveHook.reset?.();
+              }
+              setPendingApprove(budget);
+            }}
+            title={
+              approveHook.simulationError
+                ? humanizeError(approveHook.simulationError)
+                : undefined
+            }
           >
             {pendingApprove !== undefined && !approveHook.simulationError && !approveHook.writeError
               ? "Esperando confirmación…"
-              : "Aprobar mUSDC"}
+              : approveHook.writeError || approveHook.receiptError || approveHook.hasUnacknowledgedError
+                ? "Reintentar Approve"
+                : "Aprobar mUSDC"}
           </ActionButton>
         ) : (
           <ActionButton
             busy={fundHook.isWriting || fundHook.isConfirming || fundHook.simulating}
-            disabled={fundHook.isWriting || fundHook.isConfirming}
+            disabled={fundHook.isWriting || fundHook.isConfirming || fundHook.simulating}
             onClick={() => {
+              if (fundHook.writeError || fundHook.receiptError || fundHook.hasUnacknowledgedError) {
+                fundHook.reset?.();
+              }
               fundHook.click();
               setTimeout(onAfterChange, 1500);
             }}
+            title={
+              fundHook.simulationError
+                ? humanizeError(fundHook.simulationError)
+                : undefined
+            }
           >
-            {fundHook.writeError || fundHook.receiptError
+            {fundHook.writeError || fundHook.receiptError || fundHook.hasUnacknowledgedError
               ? "Reintentar Fondear"
               : "Fondear Trabajo"}
           </ActionButton>
@@ -355,29 +399,120 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
             placeholder="Motivo (reason)"
             className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100"
           />
-          <ActionButton
+<ActionButton
             tone="danger"
             busy={rejectHook.isWriting || rejectHook.isConfirming || rejectHook.simulating}
             disabled={rejectHook.isWriting || rejectHook.isConfirming || reasonInput.trim() === ""}
             onClick={() => {
+              if (rejectHook.writeError || rejectHook.receiptError || rejectHook.hasUnacknowledgedError) rejectHook.reset?.();
               rejectHook.click();
               setTimeout(onAfterChange, 1500);
             }}
           >
-            {rejectHook.writeError || rejectHook.receiptError
+            {rejectHook.writeError || rejectHook.receiptError || rejectHook.hasUnacknowledgedError
               ? "Reintentar Rechazo"
               : "Rechazar (Open)"}
           </ActionButton>
         </div>
 
-        {renderErrorBanner(approveHook.simulationError || approveHook.writeError)}
-        {renderErrorBanner(fundHook.simulationError || fundHook.writeError)}
-        {renderErrorBanner(rejectHook.simulationError || rejectHook.writeError)}
+        {renderErrorBanner(approveHook.simulationError || approveHook.writeError || approveHook.receiptError)}
+        {renderErrorBanner(fundHook.simulationError || fundHook.writeError || fundHook.receiptError)}
+        {renderErrorBanner(rejectHook.simulationError || rejectHook.writeError || rejectHook.receiptError)}
       </div>
     );
   }
 
-  // ----- Provider sees Funded → Submit -----
+  if (role === "provider" && job.status === 2) {
+    return (
+      <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
+        {renderHeader()}
+        <p className="text-sm text-slate-300">Enviar Entrega (Funded)</p>
+        <input
+          value={deliverableInput}
+          onChange={(e) => setDeliverableInput(e.target.value)}
+          placeholder="hash/IPFS/CID/texto"
+          className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100"
+        />
+        <ActionButton
+          busy={submitHook.isWriting || submitHook.isConfirming || submitHook.simulating}
+          disabled={!submitHook.canSubmit || submitHook.isWriting || submitHook.isConfirming || deliverableInput.trim() === ""}
+          onClick={() => {
+            if (submitHook.writeError || submitHook.receiptError || submitHook.hasUnacknowledgedError) submitHook.reset?.();
+            submitHook.click();
+            setTimeout(onAfterChange, 1500);
+          }}
+          title={
+            submitHook.simulationError
+              ? humanizeError(submitHook.simulationError)
+              : undefined
+          }
+        >
+          {submitHook.writeError || submitHook.receiptError || submitHook.hasUnacknowledgedError ? "Reintentar Envío" : "Enviar Entrega"}
+        </ActionButton>
+        <TxStatus
+          isWriting={submitHook.isWriting}
+          isConfirming={submitHook.isConfirming}
+          isConfirmed={submitHook.isConfirmed}
+          error={submitHook.writeError || submitHook.simulationError || submitHook.receiptError}
+          label="Submitted"
+        />
+        {renderErrorBanner(submitHook.simulationError || submitHook.writeError || submitHook.receiptError)}
+      </div>
+    );
+  }
+
+  if (role === "evaluator" && job.status === 3) {
+    return (
+      <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
+        {renderHeader()}
+        <p className="text-sm text-slate-300">Revisar entrega (Submitted)</p>
+        <input
+          value={reasonInput}
+          onChange={(e) => setReasonInput(e.target.value)}
+          placeholder="reason bytes32 (p. ej. approved-by-multisig)"
+          className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <ActionButton
+            busy={completeHook.isWriting || completeHook.isConfirming || completeHook.simulating}
+            disabled={!completeHook.canSubmit || completeHook.isWriting || completeHook.isConfirming || reasonInput.trim() === ""}
+            onClick={() => {
+              if (completeHook.writeError || completeHook.receiptError || completeHook.hasUnacknowledgedError) completeHook.reset?.();
+              completeHook.click();
+              setTimeout(onAfterChange, 1500);
+            }}
+            title={
+              completeHook.simulationError
+                ? humanizeError(completeHook.simulationError)
+                : undefined
+            }
+          >
+            {completeHook.writeError || completeHook.receiptError || completeHook.hasUnacknowledgedError ? "Reintentar Aprobar" : "Aprobar"}
+          </ActionButton>
+          <ActionButton
+            tone="danger"
+            busy={rejectHook.isWriting || rejectHook.isConfirming || rejectHook.simulating}
+            disabled={!rejectHook.canSubmit || rejectHook.isWriting || rejectHook.isConfirming || reasonInput.trim() === ""}
+            onClick={() => {
+              if (rejectHook.writeError || rejectHook.receiptError || rejectHook.hasUnacknowledgedError) rejectHook.reset?.();
+              rejectHook.click();
+              setTimeout(onAfterChange, 1500);
+            }}
+            title={
+              rejectHook.simulationError
+                ? humanizeError(rejectHook.simulationError)
+                : undefined
+            }
+          >
+            {rejectHook.writeError || rejectHook.receiptError || rejectHook.hasUnacknowledgedError ? "Reintentar Rechazo" : "Rechazar"}
+          </ActionButton>
+        </div>
+        {renderErrorBanner(completeHook.simulationError || completeHook.writeError || completeHook.receiptError)}
+        {renderErrorBanner(rejectHook.simulationError || rejectHook.writeError || rejectHook.receiptError)}
+      </div>
+    );
+  }
+
   if (role === "provider" && job.status === 2) {
     return (
       <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
@@ -410,7 +545,6 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
     );
   }
 
-  // ----- Evaluator on Submitted: approve / reject -----
   if (role === "evaluator" && job.status === 3) {
     return (
       <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
@@ -451,7 +585,6 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
     );
   }
 
-  // ----- Anyone with funded/submitted (before expiry) → Claim refund -----
   if (job.status === 2 || job.status === 3) {
     return (
       <div className="space-y-3 rounded-lg border border-slate-700 bg-slate-900/60 p-4">
@@ -462,13 +595,23 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
         <ActionButton
           tone="neutral"
           busy={claimRefundHook.isWriting || claimRefundHook.isConfirming || claimRefundHook.simulating}
-          disabled={!claimRefundHook.canSubmit || claimRefundHook.isWriting || claimRefundHook.isConfirming}
+          disabled={claimRefundHook.isWriting || claimRefundHook.isConfirming || claimRefundHook.simulating}
           onClick={() => {
+            if (claimRefundHook.writeError || claimRefundHook.receiptError || claimRefundHook.hasUnacknowledgedError) {
+              claimRefundHook.reset?.();
+            }
             claimRefundHook.click();
             setTimeout(onAfterChange, 1500);
           }}
+          title={
+            claimRefundHook.simulationError
+              ? humanizeError(claimRefundHook.simulationError)
+              : undefined
+          }
         >
-          Reclamar Reembolso
+          {claimRefundHook.writeError || claimRefundHook.receiptError || claimRefundHook.hasUnacknowledgedError
+            ? "Reintentar Reembolso"
+            : "Reclamar Reembolso"}
         </ActionButton>
         <TxStatus
           isWriting={claimRefundHook.isWriting}
@@ -477,11 +620,36 @@ export function JobActions({ job, jobId, onAfterChange }: { job: JobTuple; jobId
           error={claimRefundHook.writeError || claimRefundHook.simulationError || claimRefundHook.receiptError}
           label="Refund claimed"
         />
+        {renderErrorBanner(claimRefundHook.simulationError || claimRefundHook.writeError || claimRefundHook.receiptError)}
       </div>
     );
   }
 
-  // ----- Terminal states -----
+  const isTerminal = job.status === 4 || job.status === 5 || job.status === 6;
+  if (!isTerminal) {
+    const waitingFor = (() => {
+      if (job.status === 1) {
+        if (providerIsZero) return "el cliente asigne un proveedor";
+        return "el cliente fondee el trabajo";
+      }
+      if (job.status === 2) return "el proveedor entregue el trabajo";
+      if (job.status === 3) return "el evaluador apruebe o rechace la entrega";
+      return "que avance el flujo";
+    })();
+    return (
+      <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 text-sm text-slate-400">
+        {renderHeader()}
+        <p>
+          Estado actual: <strong className="text-slate-200">{status}</strong>.
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
+          Esperando que {waitingFor}. Tu rol (<strong className="text-slate-300">{role}</strong>) no
+          tiene acciones en este estado.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4 text-sm text-slate-400">
       {renderHeader()}

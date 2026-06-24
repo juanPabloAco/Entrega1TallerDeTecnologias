@@ -212,9 +212,9 @@ describe("JobMarketplace x Multisig (integration)", () => {
       await multisig.connect(s1).approve(0);
       await multisig.connect(s2).approve(0);
 
-      // The marketplace reverts with JobNotFound; the multisig wraps
-      // the failed call as ExecutionFailed and unwinds its state.
-      await expect(multisig.connect(s3).execute(0)).to.be.revertedWithCustomError(multisig, "ExecutionFailed");
+      // The marketplace reverts with JobNotFound; the multisig now propagates
+      // that exact custom error so the UI can show which contract reverted.
+      await expect(multisig.connect(s3).execute(0)).to.be.revertedWithCustomError(marketplace, "JobNotFound");
 
       const p = await multisig.getProposal(0);
       expect(p.executed).to.equal(false); // state rolled back

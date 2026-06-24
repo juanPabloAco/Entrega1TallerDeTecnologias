@@ -1,5 +1,11 @@
-import { useSimulateContract, useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi";
-import { useEffect, useMemo } from "react";
+import {
+  useSimulateContract,
+  useWaitForTransactionReceipt,
+  useReadContract,
+  useWalletClient,
+  useWatchContractEvent,
+} from "wagmi";
+import { useEffect, useMemo, useState } from "react";
 import {
   MARKETPLACE_ADDRESS,
   TOKEN_ADDRESS,
@@ -22,27 +28,25 @@ export function useJobAction(
   value?: bigint,
   enabled = true,
 ) {
+  const isEnabled =
+    enabled &&
+    MARKETPLACE_ADDRESS !== "0x0000000000000000000000000000000000000000" &&
+    args !== undefined;
+
   const { data: simulation, error: simulationError } = useSimulateContract({
     address: MARKETPLACE_ADDRESS,
     abi: jobMarketplaceAbi,
     functionName: action,
     args: args as never,
     value: value as never,
-    query: {
-      enabled:
-        enabled &&
-        MARKETPLACE_ADDRESS !== "0x0000000000000000000000000000000000000000" &&
-        args !== undefined,
-    },
+    query: { enabled: isEnabled },
   });
 
-  const {
-    writeContract,
-    data: hash,
-    isPending: isWriting,
-    error: writeError,
-    reset,
-  } = useWriteContract();
+  const { data: walletClient } = useWalletClient();
+  const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
+  const [isWriting, setIsWriting] = useState(false);
+  const [writeError, setWriteError] = useState<Error | null>(null);
+  const [hasUnacknowledgedError, setHasUnacknowledgedError] = useState(false);
 
   const {
     isLoading: isConfirming,
@@ -52,46 +56,82 @@ export function useJobAction(
 
   useEffect(() => {
     if (isConfirmed) {
-      const t = setTimeout(() => reset(), 3000);
+      const t = setTimeout(() => {
+        setHash(undefined);
+        setIsWriting(false);
+      }, 3000);
       return () => clearTimeout(t);
     }
-  }, [isConfirmed, reset]);
+  }, [isConfirmed]);
+
+  useEffect(() => {
+    if (writeError || receiptError) setHasUnacknowledgedError(true);
+  }, [writeError, receiptError]);
+
+  const submit = async () => {
+    if (!simulation?.request) {
+      console.warn(`[${action}] no simulation request available`, { simulation, simulationError });
+      setWriteError(new Error("No hay simulación lista. Reintentá."));
+      return;
+    }
+    if (!walletClient) {
+      setWriteError(new Error("Wallet no conectada."));
+      return;
+    }
+    if (isWriting || isConfirming) return;
+    setIsWriting(true);
+    try {
+      const txHash = await walletClient.writeContract(simulation.request);
+      setHash(txHash);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setWriteError(err);
+      setIsWriting(false);
+      console.error(`[${action}] writeContract failed:`, e);
+    }
+  };
+
+  const reset = () => {
+    setHash(undefined);
+    setIsWriting(false);
+    setWriteError(null);
+    setHasUnacknowledgedError(false);
+  };
 
   return {
-    canSubmit: Boolean(simulation?.request),
+    canSubmit: Boolean(simulation?.request) && !hasUnacknowledgedError,
     isWriting,
     isConfirming,
     isConfirmed,
-    simulationError,
+    simulationError: simulationError as Error | null,
     writeError,
-    receiptError,
+    receiptError: receiptError as Error | null,
+    hasUnacknowledgedError,
     hash,
     reset,
-    submit: () => simulation?.request && writeContract(simulation.request),
+    submit,
   };
 }
 
 export function useApproveToken(amount: bigint | undefined, spender = MARKETPLACE_ADDRESS) {
+  const isEnabled =
+    amount !== undefined &&
+    amount > 0n &&
+    TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000";
+
   const { data: simulation, error: simulationError } = useSimulateContract({
     address: TOKEN_ADDRESS,
     abi: erc20Abi,
     functionName: "approve",
     args: amount !== undefined ? [spender, amount] : undefined,
-    query: {
-      enabled:
-        amount !== undefined &&
-        amount > 0n &&
-        TOKEN_ADDRESS !== "0x0000000000000000000000000000000000000000",
-    },
+    query: { enabled: isEnabled },
   });
 
-  const {
-    writeContract,
-    data: hash,
-    isPending: isWriting,
-    error: writeError,
-    reset,
-  } = useWriteContract();
+  const { data: walletClient } = useWalletClient();
+  const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
+  const [isWriting, setIsWriting] = useState(false);
+  const [writeError, setWriteError] = useState<Error | null>(null);
+  const [hasUnacknowledgedError, setHasUnacknowledgedError] = useState(false);
 
   const {
     isLoading: isConfirming,
@@ -101,22 +141,60 @@ export function useApproveToken(amount: bigint | undefined, spender = MARKETPLAC
 
   useEffect(() => {
     if (isConfirmed) {
-      const t = setTimeout(() => reset(), 3000);
+      const t = setTimeout(() => {
+        setHash(undefined);
+        setIsWriting(false);
+      }, 3000);
       return () => clearTimeout(t);
     }
-  }, [isConfirmed, reset]);
+  }, [isConfirmed]);
+
+  useEffect(() => {
+    if (writeError || receiptError) setHasUnacknowledgedError(true);
+  }, [writeError, receiptError]);
+
+  const submit = async () => {
+    if (!simulation?.request) {
+      console.warn(`[approve] no simulation request available`, { simulation, simulationError });
+      setWriteError(new Error("No hay simulación lista. Reintentá."));
+      return;
+    }
+    if (!walletClient) {
+      setWriteError(new Error("Wallet no conectada."));
+      return;
+    }
+    if (isWriting || isConfirming) return;
+    setIsWriting(true);
+    try {
+      const txHash = await walletClient.writeContract(simulation.request);
+      setHash(txHash);
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setWriteError(err);
+      setIsWriting(false);
+      console.error(`[approve] writeContract failed:`, e);
+    }
+  };
+
+  const reset = () => {
+    setHash(undefined);
+    setIsWriting(false);
+    setWriteError(null);
+    setHasUnacknowledgedError(false);
+  };
 
   return {
-    canSubmit: Boolean(simulation?.request),
+    canSubmit: Boolean(simulation?.request) && !hasUnacknowledgedError,
     isWriting,
     isConfirming,
     isConfirmed,
-    simulationError,
+    simulationError: simulationError as Error | null,
     writeError,
-    receiptError,
+    receiptError: receiptError as Error | null,
+    hasUnacknowledgedError,
     hash,
     reset,
-    submit: () => simulation?.request && writeContract(simulation.request),
+    submit,
   };
 }
 
@@ -141,16 +219,30 @@ export function useTokenAllowance(
   spender: `0x${string}` = MARKETPLACE_ADDRESS,
   tokenAddress: `0x${string}` = TOKEN_ADDRESS,
 ) {
-  const { data } = useReadContract({
+  const { data, refetch } = useReadContract({
     address: tokenAddress,
     abi: erc20Abi,
     functionName: "allowance",
     args: owner ? [owner, spender] : undefined,
     query: {
-      enabled: Boolean(owner) && tokenAddress !== "0x0000000000000000000000000000000000000000",
+      enabled: Boolean(owner) && tokenAddress !== "0x0000000000000000000000000000",
+      refetchInterval: 15_000,
+      staleTime: 5_000,
     },
   });
-  return (data as bigint | undefined) ?? 0n;
+
+  useWatchContractEvent({
+    address: tokenAddress,
+    abi: erc20Abi,
+    eventName: "Approval",
+    args: owner ? { owner, spender } : undefined,
+    onLogs: () => {
+      refetch();
+    },
+    enabled: Boolean(owner) && tokenAddress !== "0x0000000000000000000000000000",
+  });
+
+  return { allowance: (data as bigint | undefined) ?? 0n, refetch };
 }
 
 export type JobRole = "client" | "provider" | "evaluator" | "anyone";

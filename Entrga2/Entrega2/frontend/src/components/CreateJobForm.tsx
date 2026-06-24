@@ -37,8 +37,6 @@ export function CreateJobForm() {
   const [provider, setProvider] = useState("");
   const [durationSeconds, setDurationSeconds] = useState(86_400 * 7);
 
-  // Snapshot at click time: this guarantees the simulated args and the
-  // submitted args are identical (avoiding stale-args reverts).
   const [snapshot, setSnapshot] = useState<readonly unknown[] | undefined>(undefined);
 
   const parsedBudget = (() => {
@@ -58,7 +56,6 @@ export function CreateJobForm() {
     validAddress(evaluator) &&
     (provider === "" || validAddress(provider));
 
-  // Hook always simulates against `snapshot` if available; otherwise undefined.
   const hook = useJobAction("createJob", snapshot as readonly unknown[] | undefined);
 
   const handleClick = () => {
@@ -78,7 +75,6 @@ export function CreateJobForm() {
     ] as const);
   };
 
-  // When simulation succeeds, open the wallet modal exactly once.
   useEffect(() => {
     if (
       snapshot !== undefined &&
@@ -91,8 +87,7 @@ export function CreateJobForm() {
       hook.submit?.();
       setSnapshot(undefined);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hook.canSubmit, snapshot, hook.simulationError]);
+    }, [hook.canSubmit, snapshot, hook.simulationError]);
 
   const error = hook.simulationError || hook.writeError || hook.receiptError;
   const simulating = snapshot !== undefined && !hook.canSubmit && !hook.simulationError;

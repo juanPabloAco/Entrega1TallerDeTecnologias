@@ -10,6 +10,7 @@
 import { ethers, network } from "hardhat";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
+import { updateFrontend } from "./update-frontend";
 
 const ROOT = resolve(__dirname, "..");
 const SIGNERS_DOC = join(ROOT, "SIGNERS.md");
@@ -56,15 +57,13 @@ async function main() {
     }
   }
 
-  // Update frontend .env
-  if (existsSync(FRONTEND_ENV)) {
-    let env = readFileSync(FRONTEND_ENV, "utf8");
-    env = env.replace(/VITE_MULTISIG_ADDRESS=0x[0-9a-fA-F]{40}/, `VITE_MULTISIG_ADDRESS=${multisigAddress}`);
-    env = env.replace(/VITE_MARKETPLACE_ADDRESS=0x[0-9a-fA-F]{40}/, `VITE_MARKETPLACE_ADDRESS=${marketplaceAddress}`);
-    env = env.replace(/VITE_TOKEN_ADDRESS=0x[0-9a-fA-F]{40}/, `VITE_TOKEN_ADDRESS=${tokenAddress}`);
-    writeFileSync(FRONTEND_ENV, env, "utf8");
-    console.log(`Updated ${FRONTEND_ENV}`);
-  }
+  // Update frontend .env + ABIs (delegated; preserves user keys like
+  // VITE_ALCHEMY_API_KEY).
+  await updateFrontend({
+    multisig: multisigAddress,
+    marketplace: marketplaceAddress,
+    token: tokenAddress,
+  });
 
   // Update DEPLOY.md
   if (existsSync(DEPLOY_MD)) {

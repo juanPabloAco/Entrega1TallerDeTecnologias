@@ -375,7 +375,34 @@ npm run preview    # preview build
 
 ---
 
-## 12. Resumen de comandos
+## 12. Test end-to-end (Multisig como Evaluador)
+
+Antes de gastar ETH en Sepolia, podés correr el flujo completo en una red local de Hardhat. El script `scripts/e2e-multisig-evaluator.ts` automatiza el Caso 5 del spec (Multisig 2-de-3 aprueba un pago):
+
+```bash
+npx hardhat run scripts/e2e-multisig-evaluator.ts
+```
+
+Pasos que ejecuta el script:
+
+1. Deploya `MockERC20`, `Multisig(3 signers, threshold=2)` y `JobMarketplace` en una red local.
+2. Mintea 10 000 mUSDC al cliente.
+3. Cliente crea un job (evaluator = multisig, provider = provider).
+4. Cliente aprueba + fondea 100 mUSDC.
+5. Provider entrega.
+6. Signer 1 propone `complete(jobId, reason)` en el multisig.
+7. Signers 1 y 2 aprueban (2-de-3).
+8. Signer 3 ejecuta.
+
+Al final verifica automáticamente:
+
+- Job status = `Completed` (4).
+- Balance del provider = 100 mUSDC (exactamente el budget).
+- Balance del marketplace = 0 mUSDC (escrow drenado).
+
+Salida esperada: `✓ ALL CHECKS PASSED`. Si querés correrlo contra Sepolia, agregá `--network sepolia` y asegurate de que el deployer tenga ETH.
+
+## 13. Resumen de comandos
 
 ```bash
 # tests
@@ -387,14 +414,20 @@ npx hardhat compile
 # nodo local
 npx hardhat node
 
-# deploy a sepolia
+# e2e: simula el flujo completo Multisig-como-evaluador en local
+npx hardhat run scripts/e2e-multisig-evaluator.ts
+
+# deploy a sepolia (auto-actualiza frontend/.env + ABIs)
 npm run deploy:sepolia
 
-# reset del marketplace (manteniendo multisig)
+# reset del marketplace (manteniendo multisig; auto-actualiza frontend/.env + ABIs)
 npx hardhat run scripts/redeploy-marketplace.ts --network sepolia
 
-# sincronizar ABIs
-npx hardhat run scripts/copy-abi.ts
+# actualizar frontend/.env y ABIs manualmente
+npm run update:frontend
+
+# sincronizar ABIs solamente
+npm run sync:abi
 
 # frontend
 cd frontend

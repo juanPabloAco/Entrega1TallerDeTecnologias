@@ -14,8 +14,6 @@ export function useMultisigAction(
     address: MULTISIG_ADDRESS,
     abi: multisigAbi,
     functionName: action,
-    // wagmi's TS expects a strict tuple for each function; cast through unknown
-    // keeps call sites simple while preserving inference on the result.
     args: args as never,
     value: value as never,
     query: {

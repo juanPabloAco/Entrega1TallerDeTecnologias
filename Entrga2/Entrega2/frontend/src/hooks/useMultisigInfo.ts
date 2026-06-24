@@ -63,6 +63,17 @@ export function useMultisigInfo() {
   );
 }
 
+export function useMultisigInfoRefetch() {
+  const signers = useSigners();
+  const threshold = useThreshold();
+  const proposalCount = useProposalCount();
+  return () => {
+    signers.refetch();
+    threshold.refetch();
+    proposalCount.refetch();
+  };
+}
+
 export function useHasApprovedBatch(proposalId: number, signers: `0x${string}`[]) {
   return useReadContracts({
     contracts: signers.map((s) => ({

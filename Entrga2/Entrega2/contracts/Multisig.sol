@@ -197,10 +197,13 @@ contract Multisig {
 
         p.executed = true;
 
-        (bool ok, ) = p.target.call{value: p.value}(p.data);
+        (bool ok, bytes memory ret) = p.target.call{value: p.value}(p.data);
         if (!ok) {
             p.executed = false;
-            revert ExecutionFailed();
+            assembly {
+                returndatacopy(0, 0, returndatasize())
+                revert(0, returndatasize())
+            }
         }
 
         emit ProposalExecuted(id, msg.sender);

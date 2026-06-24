@@ -119,12 +119,7 @@ function useJobCount(): {
   };
 }
 
-/**
- * Read a single job via viem's publicClient directly, bypassing wagmi's
- * multicall/contract-coders path entirely. This is the most reliable path
- * when wagmi's batched decoding misbehaves on certain RPC providers.
- */
-function useJobById(jobId: number, enabled: boolean): {
+function useJobById(jobId: number, enabled: boolean, refetchTrigger: number = 0): {
   job: JobTuple | undefined;
   isLoading: boolean;
   isError: boolean;
@@ -174,7 +169,7 @@ function useJobById(jobId: number, enabled: boolean): {
     return () => {
       cancelled = true;
     };
-  }, [publicClient, jobId, enabled, tick]);
+  }, [publicClient, jobId, enabled, tick, refetchTrigger]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -196,8 +191,11 @@ export function useJobs() {
   const countQuery = useJobCount();
   const count = countQuery.count;
 
+  const [refetchTick, setRefetchTick] = useState(0);
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["marketplace"] });
+    setRefetchTick((t) => t + 1);
   };
 
   useWatchContractEvent({
@@ -249,9 +247,11 @@ export function useJobs() {
     isFetching: countQuery.isFetching,
     isError: countQuery.isError,
     error: countQuery.error,
+    refetchTick,
     refetch: () => {
       countQuery.refetch();
       queryClient.invalidateQueries({ queryKey: ["marketplace", "job"] });
+      setRefetchTick((t) => t + 1);
     },
   };
 }

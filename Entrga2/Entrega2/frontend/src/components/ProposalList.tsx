@@ -3,8 +3,13 @@ import { useProposals } from "@/hooks/useProposals";
 import { ProposalCard } from "./ProposalCard";
 
 export function ProposalList() {
-  const { proposalCount, threshold, isLoading: infoLoading } = useMultisigInfo();
+  const { proposalCount, threshold, isLoading: infoLoading, refetch: refetchInfo } = useMultisigInfo();
   const { proposals, isLoading, isError, refetch } = useProposals(proposalCount);
+
+  const refreshAll = () => {
+    refetchInfo();
+    refetch();
+  };
 
   if (infoLoading) {
     return (
@@ -19,7 +24,7 @@ export function ProposalList() {
       <section className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-6">
         <p className="text-sm text-rose-300">Failed to read proposals. Check the contract address.</p>
         <button
-          onClick={() => refetch()}
+          onClick={() => refreshAll()}
           className="mt-2 text-xs text-indigo-300 hover:underline"
         >
           Retry
@@ -35,8 +40,8 @@ export function ProposalList() {
           Proposals ({proposalCount})
         </h2>
         <button
-          onClick={() => refetch()}
-          className="text-xs text-indigo-300 hover:underline"
+          onClick={() => refreshAll()}
+          className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:bg-slate-700"
         >
           Refresh
         </button>
@@ -57,7 +62,7 @@ export function ProposalList() {
                 id={i}
                 proposal={p}
                 threshold={threshold}
-                refetchProposals={refetch}
+                refetchProposals={refreshAll}
               />
             ) : (
               <div

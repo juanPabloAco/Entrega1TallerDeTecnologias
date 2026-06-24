@@ -147,6 +147,8 @@ contract JobMarketplace is ReentrancyGuard {
         emit ProviderSet(jobId, provider);
     }
 
+    error InsufficientAllowance(uint256 current, uint256 needed);
+
     /// @notice Client escrows `budget` tokens. Token allowance must be set first.
     function fund(uint256 jobId) external nonReentrant {
         Job storage j = _jobs[jobId];
@@ -155,6 +157,11 @@ contract JobMarketplace is ReentrancyGuard {
         if (j.status != JobStatus.Open) revert InvalidState();
         if (j.provider == address(0)) revert NoProvider();
         if (block.timestamp >= j.expiresAt) revert JobAlreadyExpired();
+
+        uint256 currentAllowance = token.allowance(msg.sender, address(this));
+        if (currentAllowance < j.budget) {
+            revert InsufficientAllowance(currentAllowance, j.budget);
+        }
 
         j.status = JobStatus.Funded;
 

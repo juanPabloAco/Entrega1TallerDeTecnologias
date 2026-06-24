@@ -3,7 +3,7 @@ import { JobCard } from "./JobCard";
 import { MARKETPLACE_ADDRESS } from "@/contracts";
 
 export function JobBoard() {
-  const { count, isLoading, isFetching, isError, error, refetch } = useJobs();
+  const { count, isLoading, isFetching, isError, error, refetch, refetchTick } = useJobs();
 
   if (MARKETPLACE_ADDRESS === "0x0000000000000000000000000000000000000000") {
     return (
@@ -60,7 +60,7 @@ export function JobBoard() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: count }, (_, i) => (
-            <JobCard key={i} jobId={i} />
+            <JobCard key={i} jobId={i} refetchTrigger={refetchTick} />
           ))}
         </div>
       )}

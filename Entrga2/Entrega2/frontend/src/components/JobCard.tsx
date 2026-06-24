@@ -3,7 +3,7 @@ import { STATUS_BADGE, STATUS_LABEL, useJobById } from "@/hooks/useJobs";
 import { shortenAddress, TOKEN_DECIMALS } from "@/contracts";
 import { JobActions } from "./JobActions";
 
-type Props = { jobId: number };
+type Props = { jobId: number; refetchTrigger?: number };
 
 function fmtBudget(budget: bigint | undefined): string {
   if (budget === undefined) return "—";
@@ -29,9 +29,9 @@ function fmtExpires(expiresAt: bigint | undefined): string {
   }
 }
 
-export function JobCard({ jobId }: Props) {
+export function JobCard({ jobId, refetchTrigger = 0 }: Props) {
   const [open, setOpen] = useState(false);
-  const { job, isLoading, isError, error, refetch } = useJobById(jobId, true);
+  const { job, isLoading, isError, error, refetch } = useJobById(jobId, true, refetchTrigger);
 
   const statusLabel = useMemo(() => (job ? STATUS_LABEL[job.status] ?? "—" : "…"), [job]);
   const badge = useMemo(

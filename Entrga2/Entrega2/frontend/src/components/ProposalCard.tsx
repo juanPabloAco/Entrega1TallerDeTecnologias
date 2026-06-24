@@ -16,9 +16,15 @@ function humanizeError(e: Error | null | undefined): string {
   const m = e.message || "";
   const match = m.match(/reverted with(?: custom error)? ['"]?([^'"]+)['"]?/);
   if (match) return `Contrato revirtió: ${match[1]}`;
+  if (/ThresholdNotMet/i.test(m)) {
+    return "Faltan firmas de aprobación para alcanzar el threshold (2 de 3).";
+  }
+  if (/ExecutionFailed/i.test(m)) {
+    return "La llamada interna al JobMarketplace revirtió. Causas comunes: (1) el jobId del calldata no existe, (2) el job no está en estado Submitted (cuando es complete), (3) el evaluator configurado no coincide con el multisig.";
+  }
   if (/User rejected|denied/i.test(m)) return "Transacción rechazada en la wallet.";
   if (/insufficient funds/i.test(m)) return "Sin fondos para gas.";
-  return m.slice(0, 200);
+  return m.slice(0, 250);
 }
 
 export function ProposalCard({ id, proposal, threshold, refetchProposals }: Props) {
@@ -42,6 +48,9 @@ export function ProposalCard({ id, proposal, threshold, refetchProposals }: Prop
     executeConfirmed,
     cancelConfirmed,
     approvalsMet,
+    resetApprove,
+    resetExecute,
+    resetCancel,
   } = useProposalCard({ id, proposal, threshold, account, refetchProposals });
 
   const approvals = Number(proposal.approvalCount);
@@ -131,7 +140,10 @@ export function ProposalCard({ id, proposal, threshold, refetchProposals }: Prop
                       : "Approve"
             }
             disabled={hasApproved || approveBusy}
-            onClick={approve}
+            onClick={() => {
+              if (approveError) resetApprove();
+              approve();
+            }}
             variant="primary"
           />
           <ActionButton
@@ -140,14 +152,19 @@ export function ProposalCard({ id, proposal, threshold, refetchProposals }: Prop
                 ? "Executed ✓"
                 : executeBusy
                   ? "Confirming…"
-                  : executeError
-                    ? "Reintentar Execute"
-                    : "Execute"
+                  : !approvalsMet
+                    ? `Need ${Number(threshold) - approvals} more`
+                    : executeError
+                      ? "Reintentar Execute"
+                      : "Execute"
             }
-            disabled={!canExecute || executeBusy}
-            onClick={execute}
+            disabled={!canExecute || executeBusy || !approvalsMet}
+            onClick={() => {
+              if (executeError) resetExecute();
+              execute();
+            }}
             variant="success"
-            hint={!approvalsMet ? `Need ${Number(threshold) - approvals} more approval(s)` : undefined}
+            hint={!approvalsMet ? `Faltan ${Number(threshold) - approvals} firma(s) para poder ejecutar` : undefined}
           />
           <ActionButton
             label={
@@ -160,7 +177,10 @@ export function ProposalCard({ id, proposal, threshold, refetchProposals }: Prop
                     : "Cancel"
             }
             disabled={!canCancel || cancelBusy}
-            onClick={cancel}
+            onClick={() => {
+              if (cancelError) resetCancel();
+              cancel();
+            }}
             variant="danger"
             hint={!canCancel && account !== proposal.proposer ? "Only proposer" : undefined}
           />
